@@ -81,19 +81,14 @@ class HeuristicPcfExtractor:
         record = PCFRecord(
             company_name=self._find_labeled_value(lines, ["company", "supplier", "manufacturer"]),
             product_name=self._find_labeled_value(lines, ["product name", "product"]),
-            biogenic_carbon_content=self._find_labeled_value(
-                lines,
-                ["biogenic carbon content", "bio carbon content", "biobased carbon content"],
-            ),
-            is_fossil_or_non_biobased_product=self._find_fossil_or_non_biobased(text),
             minimum_requirements=MinimumRequirements(
-                gwp100=PcfValueRequirementCheck(
+                gwp100_excluding_biogenic=PcfValueRequirementCheck(
                     fulfilled=True,
                     result=PcfValueResult(value=gwp100, unit=gwp100_unit),
                     evidence=None,
                     reason="",
                 ),
-                gwp100_biogenic=PcfValueRequirementCheck(
+                gwp100_including_biogenic=PcfValueRequirementCheck(
                     fulfilled=gwp100_biogenic is not None,
                     result=(
                         PcfValueResult(value=gwp100_biogenic, unit=gwp100_unit)
@@ -144,13 +139,7 @@ class HeuristicPcfExtractor:
                 ),
                 oil_and_gas_update=BooleanRequirementCheck(
                     fulfilled=False,
-                    result=self._find_oil_and_gas_update(text),
-                    evidence=None,
-                    reason="",
-                ),
-                approved_secondary_database=SecondaryDatabasesRequirementCheck(
-                    fulfilled=False,
-                    result=[],
+                    result=bool(re.search(r"\boil\s+and\s+gas\s+update\b", text, re.IGNORECASE)),
                     evidence=None,
                     reason="",
                 ),
@@ -230,29 +219,6 @@ class HeuristicPcfExtractor:
             if match:
                 return int(match.group(1))
         return None
-
-    def _find_fossil_or_non_biobased(self, text: str) -> bool | None:
-        text_lower = text.lower()
-        positive_terms = [
-            "fossil product",
-            "fossil-based",
-            "fossil based",
-            "not biobased",
-            "not bio-based",
-            "non-biobased",
-            "non bio-based",
-            "biogenic carbon content: 0",
-            "biogenic carbon content 0",
-        ]
-        negative_terms = ["biobased product", "bio-based product", "renewable carbon"]
-        if any(term in text_lower for term in positive_terms):
-            return True
-        if any(term in text_lower for term in negative_terms):
-            return False
-        return None
-
-    def _find_oil_and_gas_update(self, text: str) -> bool:
-        return bool(re.search(r"\boil\s+(?:and|&)\s+gas\s+update\b", text, flags=re.IGNORECASE))
 
     def _find_terms(self, text: str, terms: list[str]) -> list[str]:
         return [term for term in terms if re.search(re.escape(term), text, flags=re.IGNORECASE)]

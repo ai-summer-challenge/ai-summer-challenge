@@ -7,9 +7,8 @@ class PcfValueResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     value: float
-    unit: str | None = Field(
-        default=None,
-        description="Unit attached to the PCF value, for example kg CO2e/kg product.",
+    unit: str = Field(
+        description="Unit attached to the PCF value, for example kg CO2e/kg product."
     )
 
 
@@ -73,14 +72,11 @@ class MinimumRequirements(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    gwp100: PcfValueRequirementCheck = Field(
+    gwp100_excluding_biogenic: PcfValueRequirementCheck = Field(
         description="Mandatory GWP 100 value excluding biogenic carbon."
     )
-    gwp100_biogenic: PcfValueRequirementCheck = Field(
-        description=(
-            "GWP 100 value including biogenic carbon, unless the fossil/non-biobased exception "
-            "is supported."
-        )
+    gwp100_including_biogenic: PcfValueRequirementCheck = Field(
+        description="GWP 100 value including biogenic carbon, when reported."
     )
     system_boundary: TextRequirementCheck
     accepted_standard: StandardsRequirementCheck
@@ -89,11 +85,10 @@ class MinimumRequirements(BaseModel):
     impact_assessment_method: TextRequirementCheck
     secondary_databases: SecondaryDatabasesRequirementCheck
     oil_and_gas_update: BooleanRequirementCheck
-    approved_secondary_database: SecondaryDatabasesRequirementCheck
 
 
 class PCFRecord(BaseModel):
-    """Structured data expected from a supplier PCF PDF."""
+    """Structured data expected from a supplier PCF source document."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -102,17 +97,6 @@ class PCFRecord(BaseModel):
 
     company_name: str | None = None
     product_name: str | None = None
-    biogenic_carbon_content: str | None = Field(
-        default=None,
-        description="Reported biogenic carbon content, for example 0%, when available.",
-    )
-    is_fossil_or_non_biobased_product: bool | None = Field(
-        default=None,
-        description=(
-            "Whether the document indicates the product is fossil or not biobased. "
-            "This supports the one-PCF-value exception."
-        ),
-    )
     minimum_requirements: MinimumRequirements
     extraction_notes: list[str] = Field(default_factory=list)
 
