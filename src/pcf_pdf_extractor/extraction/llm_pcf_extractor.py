@@ -135,6 +135,16 @@ class LlmPcfExtractor:
                 },
             )
 
+        minimum_requirements.setdefault(
+            "oil_and_gas_update",
+            {
+                "fulfilled": False,
+                "result": False,
+                "evidence": None,
+                "reason": "'Oil and gas update' was not found in the supplier documentation.",
+            },
+        )
+
         for field_name in ["accepted_standard", "secondary_databases"]:
             minimum_requirements.setdefault(
                 field_name,
@@ -145,6 +155,19 @@ class LlmPcfExtractor:
                     "reason": "No value was extracted.",
                 },
             )
+
+        minimum_requirements.setdefault(
+            "approved_secondary_database",
+            {
+                "fulfilled": False,
+                "result": [],
+                "evidence": None,
+                "reason": (
+                    "Neither ecoinvent 3.10 nor Sphera Managed Content 2024 was found among "
+                    "the secondary databases."
+                ),
+            },
+        )
 
     def _system_prompt(self) -> str:
         return (
@@ -178,12 +201,22 @@ class LlmPcfExtractor:
             "not biobased, non-biobased, or has zero biogenic carbon content. "
             "Preserve standard names and impact assessment method names as written, for example "
             "TfS, ISO 14040, ISO 14044, ISO 14067, IPCC AR6, CML2001. "
-            "For secondary emission factor databases, return one object per database with name "
-            "and version in minimum_requirements.secondary_databases.result. "
+            "For secondary emission factor databases, only ecoinvent 3.10 and Sphera "
+            "Managed Content 2024 are accepted. These are the only allowed secondary "
+            "databases. Return extracted secondary database objects with name and version in "
+            "minimum_requirements.secondary_databases.result, and mark fulfilled false if any "
+            "database other than ecoinvent 3.10 or Sphera Managed Content 2024 is used. "
+            "Also check whether the exact phrase or clear wording 'oil and gas update' is "
+            "mentioned anywhere in the documentation; put that boolean answer in "
+            "minimum_requirements.oil_and_gas_update.result. "
+            "Also check whether ecoinvent 3.10 or Sphera Managed Content 2024 is used as a "
+            "secondary emission factor database; put matching database objects in "
+            "minimum_requirements.approved_secondary_database.result. "
             "For minimum_requirements, return a named object, not a list. Do not include "
             "criterion_id. It must contain these fields: gwp100, gwp100_biogenic, "
             "system_boundary, accepted_standard, production_location, reference_year, "
-            "impact_assessment_method, secondary_databases. "
+            "impact_assessment_method, secondary_databases, oil_and_gas_update, "
+            "approved_secondary_database. "
             "Every minimum_requirements field must contain fulfilled, result, evidence, "
             "and reason. If fulfilled is true, result must contain the extracted value or "
             "values. For example, production_location.result can be 'US', "
@@ -198,8 +231,13 @@ class LlmPcfExtractor:
             "or not biobased, for example biogenic carbon content equals 0. "
             "For accepted_standard, fulfilled true only for TfS guideline, ISO 14040/14044 "
             "together, or ISO 14067. Other standards do not fulfill this criterion. "
-            "For secondary_databases, fulfilled true only when database names and versions are "
-            "documented. "
+            "For secondary_databases, fulfilled true only when the documented secondary "
+            "databases are limited to ecoinvent 3.10 and/or Sphera Managed Content 2024. "
+            "Any other database or version means fulfilled false. "
+            "For oil_and_gas_update, fulfilled and result must both be true only when oil and "
+            "gas update is mentioned; otherwise fulfilled false and result false. "
+            "For approved_secondary_database, fulfilled true only when the secondary databases "
+            "include ecoinvent version 3.10 or Sphera Managed Content version 2024. "
             "Missing, ambiguous, or unsupported evidence means fulfilled false. "
             "Each check must include concise evidence and reason. "
             "Add short extraction_notes for uncertain fields, missing fields, or ambiguous wording."
@@ -235,8 +273,14 @@ class LlmPcfExtractor:
             "6. reference_year: reference year of data collection must be documented.\n"
             "7. impact_assessment_method: PCF impact assessment method must be documented, "
             "for example IPCC AR6, CML2001, ISO14067, or another named method.\n"
-            "8. secondary_databases: secondary emission factor database names and versions "
-            "must be documented.\n\n"
+            "8. secondary_databases: secondary emission factor databases must be documented "
+            "and must be limited to ecoinvent 3.10 and/or Sphera Managed Content 2024. "
+            "Any other database or version fails this requirement.\n"
+            "9. oil_and_gas_update: whether 'oil and gas update' is mentioned anywhere in "
+            "the documentation. Use result true or false.\n"
+            "10. approved_secondary_database: whether ecoinvent 3.10 or Sphera Managed "
+            "Content 2024 is used as a secondary emission factor database. Use result as a "
+            "list of matching database objects.\n\n"
             "For every checklist item, add one named minimum_requirements field with fulfilled true "
             "or false. When evidence is missing or ambiguous, fulfilled must be false. "
             "When fulfilled is true, include the extracted answer in result, except for "

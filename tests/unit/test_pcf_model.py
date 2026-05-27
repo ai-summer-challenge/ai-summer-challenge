@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from pcf_pdf_extractor.domain import (
+    BooleanRequirementCheck,
     MinimumRequirements,
     PCFRecord,
     PcfValueRequirementCheck,
@@ -58,6 +59,18 @@ def _minimum_requirements(reference_year: int | None = None) -> MinimumRequireme
             reason="",
         ),
         secondary_databases=SecondaryDatabasesRequirementCheck(
+            fulfilled=False,
+            result=[],
+            evidence=None,
+            reason="",
+        ),
+        oil_and_gas_update=BooleanRequirementCheck(
+            fulfilled=False,
+            result=False,
+            evidence=None,
+            reason="",
+        ),
+        approved_secondary_database=SecondaryDatabasesRequirementCheck(
             fulfilled=False,
             result=[],
             evidence=None,
