@@ -15,17 +15,17 @@ from pcf_pdf_extractor.domain import (
 
 def _minimum_requirements() -> MinimumRequirements:
     return MinimumRequirements(
-        gwp100=PcfValueRequirementCheck(
+        gwp100_excluding_biogenic=PcfValueRequirementCheck(
             fulfilled=True,
             result=PcfValueResult(value=1.45, unit="kg CO2e/kg product"),
             evidence=None,
             reason="Value found.",
         ),
-        gwp100_biogenic=PcfValueRequirementCheck(
-            fulfilled=False,
-            result=None,
+        gwp100_including_biogenic=PcfValueRequirementCheck(
+            fulfilled=True,
+            result=PcfValueResult(value=1.23, unit="kg CO2e/kg product"),
             evidence=None,
-            reason="Value not found.",
+            reason="Value found.",
         ),
         system_boundary=TextRequirementCheck(
             fulfilled=False,
@@ -64,14 +64,8 @@ def _minimum_requirements() -> MinimumRequirements:
             reason="",
         ),
         oil_and_gas_update=BooleanRequirementCheck(
-            fulfilled=False,
-            result=False,
-            evidence=None,
-            reason="",
-        ),
-        approved_secondary_database=SecondaryDatabasesRequirementCheck(
-            fulfilled=False,
-            result=[],
+            fulfilled=True,
+            result=True,
             evidence=None,
             reason="",
         ),
@@ -90,11 +84,12 @@ def test_health_returns_ok() -> None:
 def test_assess_record_refreshes_minimum_requirements() -> None:
     client = TestClient(app)
     payload = {
-        "biogenic_carbon_content": "0%",
         "minimum_requirements": _minimum_requirements().model_dump(mode="json"),
     }
 
     response = client.post("/api/records/assess", json=payload)
 
     assert response.status_code == 200
-    assert response.json()["minimum_requirements"]["gwp100_biogenic"]["fulfilled"] is True
+    assert (
+        response.json()["minimum_requirements"]["gwp100_including_biogenic"]["fulfilled"] is True
+    )

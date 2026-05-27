@@ -104,7 +104,7 @@ def test_assessment_fulfills_all_requirements_with_two_pcf_values() -> None:
             reference_year=2024,
             impact_assessment_method="IPCC AR6",
             secondary_databases=[SecondaryDatabase(name="ecoinvent", version="3.10")],
-            oil_and_gas_update=False,
+            oil_and_gas_update=True,
         ),
     )
 
