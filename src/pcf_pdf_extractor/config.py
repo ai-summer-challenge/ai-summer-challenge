@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     llm_api_key: SecretStr | None = None
     llm_model: str | None = None
     llm_timeout_seconds: float = Field(default=60.0, gt=0)
-    llm_max_input_chars: int = Field(default=120_000, gt=0)
+    llm_max_input_chars: int = Field(default=269_000, gt=0)
 
 
 @lru_cache

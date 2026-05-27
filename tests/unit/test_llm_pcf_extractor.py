@@ -17,7 +17,7 @@ class FakeLlmClient:
     ) -> dict[str, Any]:
         self.response_schema = response_schema
         assert "Product Carbon Footprint" in system_prompt
-        assert "PDF text" in user_prompt
+        assert "Source text" in user_prompt
         return self.payload
 
 
@@ -29,7 +29,7 @@ def test_llm_extractor_validates_json_payload() -> None:
                     "company_name": "Example Chemicals",
                     "product_name": "Solvent X",
                     "minimum_requirements": {
-                        "gwp100": {
+                        "gwp100_excluding_biogenic": {
                             "fulfilled": True,
                             "result": {"value": 1.45, "unit": "kg CO2e/kg product"},
                             "evidence": (
@@ -38,7 +38,7 @@ def test_llm_extractor_validates_json_payload() -> None:
                             ),
                             "reason": "Value found.",
                         },
-                        "gwp100_biogenic": {
+                        "gwp100_including_biogenic": {
                             "fulfilled": True,
                             "result": {"value": 1.23, "unit": "kg CO2e/kg product"},
                             "evidence": "PCF GWP 100 with biogenic carbon: 1.23 kg CO2e/kg product",
@@ -92,12 +92,12 @@ def test_llm_extractor_validates_json_payload() -> None:
 
     assert len(records) == 1
     assert record.company_name == "Example Chemicals"
-    assert record.minimum_requirements.gwp100.fulfilled is True
-    assert record.minimum_requirements.gwp100.result is not None
-    assert record.minimum_requirements.gwp100.result.value == 1.45
-    assert record.minimum_requirements.gwp100_biogenic.fulfilled is True
-    assert record.minimum_requirements.gwp100_biogenic.result is not None
-    assert record.minimum_requirements.gwp100_biogenic.result.value == 1.23
+    assert record.minimum_requirements.gwp100_excluding_biogenic.fulfilled is True
+    assert record.minimum_requirements.gwp100_excluding_biogenic.result is not None
+    assert record.minimum_requirements.gwp100_excluding_biogenic.result.value == 1.45
+    assert record.minimum_requirements.gwp100_including_biogenic.fulfilled is True
+    assert record.minimum_requirements.gwp100_including_biogenic.result is not None
+    assert record.minimum_requirements.gwp100_including_biogenic.result.value == 1.23
     assert record.minimum_requirements.secondary_databases.result[0].version == "3.9"
     assert "Extracted with an LLM. Human review is required before shipping." in record.extraction_notes
     assert client.response_schema is not None
@@ -108,6 +108,7 @@ def test_llm_extractor_normalizes_null_collection_fields() -> None:
         {
             "company_name": "Example Chemicals",
             "gwp100": 1.45,
+            "gwp100_unit": "kg CO2e/kg product",
             "extraction_notes": None,
         }
     )
@@ -116,10 +117,10 @@ def test_llm_extractor_normalizes_null_collection_fields() -> None:
     record = records[0]
 
     assert len(records) == 1
-    assert record.minimum_requirements.gwp100.fulfilled is True
-    assert record.minimum_requirements.gwp100.result is not None
-    assert record.minimum_requirements.gwp100.result.value == 1.45
-    assert record.minimum_requirements.gwp100_biogenic.fulfilled is False
+    assert record.minimum_requirements.gwp100_excluding_biogenic.fulfilled is True
+    assert record.minimum_requirements.gwp100_excluding_biogenic.result is not None
+    assert record.minimum_requirements.gwp100_excluding_biogenic.result.value == 1.45
+    assert record.minimum_requirements.gwp100_including_biogenic.fulfilled is False
 
 
 def test_llm_extractor_accepts_legacy_gwp100_object_payload() -> None:
@@ -138,19 +139,31 @@ def test_llm_extractor_accepts_legacy_gwp100_object_payload() -> None:
     record = records[0]
 
     assert len(records) == 1
-    assert record.minimum_requirements.gwp100.result is not None
-    assert record.minimum_requirements.gwp100.result.value == 1.45
-    assert record.minimum_requirements.gwp100_biogenic.result is not None
-    assert record.minimum_requirements.gwp100_biogenic.result.value == 1.23
-    assert record.minimum_requirements.gwp100.result.unit == "kg CO2e/kg product"
+    assert record.minimum_requirements.gwp100_excluding_biogenic.result is not None
+    assert record.minimum_requirements.gwp100_excluding_biogenic.result.value == 1.45
+    assert record.minimum_requirements.gwp100_including_biogenic.result is not None
+    assert record.minimum_requirements.gwp100_including_biogenic.result.value == 1.23
+    assert record.minimum_requirements.gwp100_excluding_biogenic.result.unit == (
+        "kg CO2e/kg product"
+    )
 
 
 def test_llm_extractor_returns_one_record_per_chemical() -> None:
     client = FakeLlmClient(
         {
             "records": [
-                {"company_name": "Supplier", "product_name": "Chemical A", "gwp100": 1.1},
-                {"company_name": "Supplier", "product_name": "Chemical B", "gwp100": 2.2},
+                {
+                    "company_name": "Supplier",
+                    "product_name": "Chemical A",
+                    "gwp100": 1.1,
+                    "gwp100_unit": "kg CO2e/kg product",
+                },
+                {
+                    "company_name": "Supplier",
+                    "product_name": "Chemical B",
+                    "gwp100": 2.2,
+                    "gwp100_unit": "kg CO2e/kg product",
+                },
             ]
         }
     )
@@ -158,7 +171,7 @@ def test_llm_extractor_returns_one_record_per_chemical() -> None:
     records = LlmPcfExtractor(client=client).extract("two chemicals")
 
     assert [record.product_name for record in records] == ["Chemical A", "Chemical B"]
-    assert records[0].minimum_requirements.gwp100.result is not None
-    assert records[0].minimum_requirements.gwp100.result.value == 1.1
-    assert records[1].minimum_requirements.gwp100.result is not None
-    assert records[1].minimum_requirements.gwp100.result.value == 2.2
+    assert records[0].minimum_requirements.gwp100_excluding_biogenic.result is not None
+    assert records[0].minimum_requirements.gwp100_excluding_biogenic.result.value == 1.1
+    assert records[1].minimum_requirements.gwp100_excluding_biogenic.result is not None
+    assert records[1].minimum_requirements.gwp100_excluding_biogenic.result.value == 2.2

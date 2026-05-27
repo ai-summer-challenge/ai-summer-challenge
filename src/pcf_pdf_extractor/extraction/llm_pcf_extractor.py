@@ -18,7 +18,7 @@ class JsonLlmClient(Protocol):
 
 
 class LlmPcfExtractor:
-    """Extract PCF information from PDF text with an LLM and validate the result."""
+    """Extract PCF information from normalized source text with an LLM."""
 
     def __init__(self, client: JsonLlmClient, max_input_chars: int = 120_000) -> None:
         self._client = client
@@ -85,15 +85,25 @@ class LlmPcfExtractor:
 
         self._set_legacy_pcf_requirement(
             minimum_requirements,
-            field_name="gwp100",
+            field_name="gwp100_excluding_biogenic",
             value=legacy_gwp100,
             unit=legacy_gwp100_unit,
         )
         self._set_legacy_pcf_requirement(
             minimum_requirements,
-            field_name="gwp100_biogenic",
+            field_name="gwp100_including_biogenic",
             value=legacy_gwp100_biogenic,
             unit=legacy_gwp100_unit,
+        )
+        self._rename_legacy_requirement(
+            minimum_requirements,
+            old_name="gwp100",
+            new_name="gwp100_excluding_biogenic",
+        )
+        self._rename_legacy_requirement(
+            minimum_requirements,
+            old_name="gwp100_biogenic",
+            new_name="gwp100_including_biogenic",
         )
         self._fill_missing_requirement_defaults(minimum_requirements)
 
@@ -116,10 +126,21 @@ class LlmPcfExtractor:
             "reason": "Migrated from legacy top-level PCF field.",
         }
 
+    def _rename_legacy_requirement(
+        self,
+        minimum_requirements: dict[str, Any],
+        *,
+        old_name: str,
+        new_name: str,
+    ) -> None:
+        if new_name in minimum_requirements or old_name not in minimum_requirements:
+            return
+        minimum_requirements[new_name] = minimum_requirements.pop(old_name)
+
     def _fill_missing_requirement_defaults(self, minimum_requirements: dict[str, Any]) -> None:
         for field_name in [
-            "gwp100",
-            "gwp100_biogenic",
+            "gwp100_excluding_biogenic",
+            "gwp100_including_biogenic",
             "system_boundary",
             "production_location",
             "reference_year",
@@ -156,19 +177,6 @@ class LlmPcfExtractor:
                 },
             )
 
-        minimum_requirements.setdefault(
-            "approved_secondary_database",
-            {
-                "fulfilled": False,
-                "result": [],
-                "evidence": None,
-                "reason": (
-                    "Neither ecoinvent 3.10 nor Sphera Managed Content 2024 was found among "
-                    "the secondary databases."
-                ),
-            },
-        )
-
     def _system_prompt(self) -> str:
         return (
             "You extract Product Carbon Footprint data from supplier documentation text and "
@@ -177,28 +185,25 @@ class LlmPcfExtractor:
             "Create one records item for each distinct chemical or product with PCF data in "
             "the supplier documentation. Do not merge different chemicals into one record. "
             "If a document contains several chemicals/products in a table, return several "
-            "records. If document-level facts such as system boundary, standard, production "
-            "location, reference year, impact method, or databases apply to every chemical, "
-            "repeat those facts in each relevant record. "
+            "records. If document-level facts such as system boundary, accepted standard, "
+            "production location, reference year, impact method, or secondary databases apply "
+            "to every chemical, repeat those facts in each relevant record. "
             "Do not infer facts that are not in the text. "
             "Use null for unknown scalar fields and [] for unknown list fields. "
             "For every record, return source_file and raw_text_sha256 as null; the application "
             "fills them after the LLM response. "
-            "Do not return top-level fields named gwp100, gwp100_biogenic, gwp100_unit, "
-            "system_boundary, standards, product_location, reference_year, "
-            "impact_assessment_method, or secondary_databases. Put those extracted values "
-            "inside minimum_requirements.<field>.result. "
-            "minimum_requirements.gwp100.result must be an object with value and unit for "
-            "the product PCF GWP 100 value excluding biogenic carbon. "
-            "minimum_requirements.gwp100_biogenic.result must be an object with value and "
-            "unit when the product PCF GWP 100 value including biogenic carbon is reported. "
-            "If the document reports only one GWP 100 value and clearly indicates the product "
-            "is fossil or not biobased, put that value in minimum_requirements.gwp100.result "
-            "and leave minimum_requirements.gwp100_biogenic.result null while marking the "
-            "biogenic requirement fulfilled by exception. "
-            "Extract biogenic_carbon_content when stated, and set "
-            "is_fossil_or_non_biobased_product only when the text says the product is fossil, "
-            "not biobased, non-biobased, or has zero biogenic carbon content. "
+            "Each record must contain exactly these top-level fields: "
+            "source_file, raw_text_sha256, company_name, product_name, minimum_requirements, "
+            "and extraction_notes. "
+            "Do not return any other top-level fields. Put extracted requirement values inside "
+            "minimum_requirements.<field>.result. "
+            "minimum_requirements.gwp100_excluding_biogenic is the mandatory climate change "
+            "PCF/GWP 100 value excluding biogenic carbon. It is fulfilled only when result is "
+            "an object with value and unit. If this value or its unit is not explicitly in the "
+            "text, set fulfilled false and result null; never invent the mandatory value. "
+            "minimum_requirements.gwp100_including_biogenic.result must be an object with "
+            "value and unit when the GWP 100 value including biogenic carbon is reported; "
+            "otherwise its result must be null and fulfilled false. "
             "Preserve standard names and impact assessment method names as written, for example "
             "TfS, ISO 14040, ISO 14044, ISO 14067, IPCC AR6, CML2001. "
             "For secondary emission factor databases, only ecoinvent 3.10 and Sphera "
@@ -206,38 +211,35 @@ class LlmPcfExtractor:
             "databases. Return extracted secondary database objects with name and version in "
             "minimum_requirements.secondary_databases.result, and mark fulfilled false if any "
             "database other than ecoinvent 3.10 or Sphera Managed Content 2024 is used. "
-            "Also check whether the exact phrase or clear wording 'oil and gas update' is "
-            "mentioned anywhere in the documentation; put that boolean answer in "
-            "minimum_requirements.oil_and_gas_update.result. "
-            "Also check whether ecoinvent 3.10 or Sphera Managed Content 2024 is used as a "
-            "secondary emission factor database; put matching database objects in "
-            "minimum_requirements.approved_secondary_database.result. "
             "For minimum_requirements, return a named object, not a list. Do not include "
-            "criterion_id. It must contain these fields: gwp100, gwp100_biogenic, "
-            "system_boundary, accepted_standard, production_location, reference_year, "
-            "impact_assessment_method, secondary_databases, oil_and_gas_update, "
-            "approved_secondary_database. "
+            "criterion_id. It must contain exactly these fields: "
+            "gwp100_excluding_biogenic, gwp100_including_biogenic, system_boundary, "
+            "accepted_standard, production_location, reference_year, impact_assessment_method, "
+            "oil_and_gas_update, secondary_databases. "
             "Every minimum_requirements field must contain fulfilled, result, evidence, "
             "and reason. If fulfilled is true, result must contain the extracted value or "
             "values. For example, production_location.result can be 'US', "
             "system_boundary.result can be 'cradle-to-gate', reference_year.result can be "
             "2024, and accepted_standard.result can be ['ISO 14067']. "
+            "For production_location, extract the country or region of product/process "
+            "production. Do not use the issuer's address, company headquarters, report writer "
+            "location, or verifier location. "
+            "For reference_year, extract the year of production data or data collection used "
+            "for the PCF calculation. Do not use the publication date, issue date, signature "
+            "date, audit date, or report date unless the text explicitly says that date is the "
+            "data collection/reference year. "
             "Mark fulfilled true only when the supplier documentation contains enough evidence. "
-            "For minimum_requirements.gwp100, fulfilled true requires a numeric GWP 100 value "
-            "excluding biogenic carbon in result.value. "
-            "For minimum_requirements.gwp100_biogenic, fulfilled true requires a numeric "
-            "GWP 100 value including biogenic carbon in result.value, except that it is also "
-            "fulfilled with result null when the documentation indicates the product is fossil "
-            "or not biobased, for example biogenic carbon content equals 0. "
+            "For minimum_requirements.gwp100_excluding_biogenic, fulfilled true requires both "
+            "a numeric value and a unit. "
+            "For minimum_requirements.gwp100_including_biogenic, fulfilled true requires both "
+            "a numeric value and a unit; if absent, fulfilled must be false and result null. "
             "For accepted_standard, fulfilled true only for TfS guideline, ISO 14040/14044 "
             "together, or ISO 14067. Other standards do not fulfill this criterion. "
+            "For oil_and_gas_update, fulfilled true only when the supplier documentation explicitly states "
+            "that the oil and gas update is applied. "
             "For secondary_databases, fulfilled true only when the documented secondary "
             "databases are limited to ecoinvent 3.10 and/or Sphera Managed Content 2024. "
             "Any other database or version means fulfilled false. "
-            "For oil_and_gas_update, fulfilled and result must both be true only when oil and "
-            "gas update is mentioned; otherwise fulfilled false and result false. "
-            "For approved_secondary_database, fulfilled true only when the secondary databases "
-            "include ecoinvent version 3.10 or Sphera Managed Content version 2024. "
             "Missing, ambiguous, or unsupported evidence means fulfilled false. "
             "Each check must include concise evidence and reason. "
             "Add short extraction_notes for uncertain fields, missing fields, or ambiguous wording."
@@ -245,50 +247,49 @@ class LlmPcfExtractor:
 
     def _user_prompt(
         self,
-        pdf_text: str,
+        source_text: str,
         schema: dict[str, Any],
         was_truncated: bool,
     ) -> str:
         truncation_note = (
-            "The PDF text was truncated because it is long. Extract only from the text below."
+            "The source text was truncated because it is long. Extract only from the text below."
             if was_truncated
-            else "The complete extracted PDF text is below."
+            else "The complete extracted source text is below."
         )
         return (
             f"{truncation_note}\n\n"
+            "Return one record per chemical/product. Each record must have exactly these "
+            "top-level fields: source_file, raw_text_sha256, company_name, product_name, "
+            "minimum_requirements, extraction_notes.\n\n"
             "Minimum requirement checklist to assess:\n"
-            "1. gwp100: mandatory numeric product PCF GWP 100 value excluding biogenic carbon. "
-            "If fulfilled, result must be {\"value\": number, \"unit\": string or null}.\n"
-            "2. gwp100_biogenic: numeric product PCF GWP 100 value including biogenic carbon. "
-            "Exception: if the documentation indicates the product is fossil or not biobased, "
-            "such as biogenic carbon content = 0, gwp100 alone is sufficient and this "
-            "requirement is fulfilled by the exception. If a value is present, result must be "
-            "{\"value\": number, \"unit\": string or null}; if fulfilled by exception, "
-            "result must be null.\n"
+            "1. gwp100_excluding_biogenic: mandatory climate change / GWP 100 PCF value "
+            "excluding biogenic carbon. If fulfilled, result must be "
+            "{\"value\": number, \"unit\": string}. If the value or unit is absent, "
+            "fulfilled must be false and result must be null; do not invent it.\n"
+            "2. gwp100_including_biogenic: GWP 100 PCF value including biogenic carbon. "
+            "If present, result must be {\"value\": number, \"unit\": string}; if absent, "
+            "fulfilled must be false and result must be null.\n"
             "3. system_boundary: the PCF calculation system boundary must be documented, for "
             "example cradle-to-gate.\n"
             "4. accepted_standard: only TfS guideline, ISO 14040/14044 together, or ISO 14067 "
             "are accepted.\n"
-            "5. production_location: country or region must be documented.\n"
-            "6. reference_year: reference year of data collection must be documented.\n"
+            "5. production_location: country or region of production must be documented. "
+            "Use the production/process location, not the report issuer's address or HQ.\n"
+            "6. reference_year: reference year of production data/data collection must be "
+            "documented. Do not use the report issue/publication year unless explicitly stated "
+            "as the data reference year.\n"
             "7. impact_assessment_method: PCF impact assessment method must be documented, "
             "for example IPCC AR6, CML2001, ISO14067, or another named method.\n"
             "8. secondary_databases: secondary emission factor databases must be documented "
             "and must be limited to ecoinvent 3.10 and/or Sphera Managed Content 2024. "
             "Any other database or version fails this requirement.\n"
-            "9. oil_and_gas_update: whether 'oil and gas update' is mentioned anywhere in "
-            "the documentation. Use result true or false.\n"
-            "10. approved_secondary_database: whether ecoinvent 3.10 or Sphera Managed "
-            "Content 2024 is used as a secondary emission factor database. Use result as a "
-            "list of matching database objects.\n\n"
             "For every checklist item, add one named minimum_requirements field with fulfilled true "
             "or false. When evidence is missing or ambiguous, fulfilled must be false. "
-            "When fulfilled is true, include the extracted answer in result, except for "
-            "gwp100_biogenic fulfilled by fossil/non-biobased exception where result is null.\n\n"
+            "When fulfilled is true, include the extracted answer in result.\n\n"
             "Return JSON matching this schema:\n"
             f"{json.dumps(schema, indent=2)}\n\n"
-            "PDF text:\n"
+            "Source text:\n"
             "```text\n"
-            f"{pdf_text}\n"
+            f"{source_text}\n"
             "```"
         )

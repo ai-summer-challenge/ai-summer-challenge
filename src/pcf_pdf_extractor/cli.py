@@ -5,7 +5,7 @@ from typing import Annotated
 
 import typer
 
-from pcf_pdf_extractor.application import ExtractPcfFromPdf
+from pcf_pdf_extractor.application import ExtractPcfFromSource
 from pcf_pdf_extractor.config import get_settings
 from pcf_pdf_extractor.domain import PCFRecord
 from pcf_pdf_extractor.extraction import ExtractorKind, build_extractor
@@ -16,7 +16,10 @@ app = typer.Typer(no_args_is_help=True, help="Extract and ship Product Carbon Fo
 
 @app.command()
 def extract(
-    pdf_path: Annotated[Path, typer.Argument(help="Supplier PDF containing PCF information.")],
+    source_path: Annotated[
+        Path,
+        typer.Argument(help="Supplier source file containing PCF information."),
+    ],
     extractor: Annotated[
         ExtractorKind,
         typer.Option(
@@ -32,19 +35,19 @@ def extract(
             "--output",
             "-o",
             help=(
-                "Optional JSON file or directory. Multi-chemical PDFs are written as one "
+                "Optional JSON file or directory. Multi-chemical sources are written as one "
                 "JSON file per chemical."
             ),
         ),
     ] = None,
 ) -> None:
-    """Read a PDF and emit one structured PCF JSON record per chemical/product."""
+    """Read a supported source file and emit one PCF JSON record per chemical/product."""
 
     settings = get_settings()
     pcf_extractor = build_extractor(extractor, settings)
-    records = ExtractPcfFromPdf(extractor=pcf_extractor).run(pdf_path)
+    records = ExtractPcfFromSource(extractor=pcf_extractor).run(source_path)
     if not records:
-        raise typer.BadParameter("No chemical/product PCF records were extracted from this PDF.")
+        raise typer.BadParameter("No chemical/product PCF records were extracted from this source.")
 
     if output is not None:
         written_paths = _write_records(records, output)
@@ -54,9 +57,9 @@ def extract(
 
     payload: object
     if len(records) == 1:
-        payload = records[0].model_dump(mode="json", exclude_none=True)
+        payload = _record_payload(records[0])
     else:
-        payload = [record.model_dump(mode="json", exclude_none=True) for record in records]
+        payload = [_record_payload(record) for record in records]
     typer.echo(json.dumps(payload, indent=2, ensure_ascii=False))
 
 
@@ -75,7 +78,7 @@ def ship(
 def _write_records(records: list[PCFRecord], output: Path) -> list[Path]:
     if len(records) == 1 and output.suffix.lower() == ".json" and not output.is_dir():
         formatted = json.dumps(
-            records[0].model_dump(mode="json", exclude_none=True),
+            _record_payload(records[0]),
             indent=2,
             ensure_ascii=False,
         )
@@ -91,7 +94,7 @@ def _write_records(records: list[PCFRecord], output: Path) -> list[Path]:
         filename = f"{index:02d}-{_record_slug(record, index)}.json"
         path = output_dir / filename
         formatted = json.dumps(
-            record.model_dump(mode="json", exclude_none=True),
+            _record_payload(record),
             indent=2,
             ensure_ascii=False,
         )
@@ -110,3 +113,7 @@ def _record_slug(record: PCFRecord, index: int) -> str:
     raw_name = record.product_name or record.company_name or f"chemical-{index:02d}"
     slug = re.sub(r"[^a-zA-Z0-9]+", "-", raw_name).strip("-").lower()
     return slug or f"chemical-{index:02d}"
+
+
+def _record_payload(record: PCFRecord) -> dict:
+    return record.model_dump(mode="json")

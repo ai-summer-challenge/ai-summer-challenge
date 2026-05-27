@@ -12,7 +12,6 @@ def test_heuristic_extractor_finds_common_pcf_fields() -> None:
     Product location: France
     Reference year of data collection: 2024
     Impact assessment method: IPCC AR6
-    Oil and gas update: applied
     Secondary database: ecoinvent 3.10
     """
 
@@ -22,11 +21,13 @@ def test_heuristic_extractor_finds_common_pcf_fields() -> None:
     assert len(records) == 1
     assert record.company_name == "Example Chemicals"
     assert record.product_name == "Solvent X"
-    assert record.minimum_requirements.gwp100.result is not None
-    assert record.minimum_requirements.gwp100.result.value == 1.45
-    assert record.minimum_requirements.gwp100_biogenic.result is not None
-    assert record.minimum_requirements.gwp100_biogenic.result.value == 1.23
-    assert record.minimum_requirements.gwp100.result.unit == "kg CO2e/kg product"
+    assert record.minimum_requirements.gwp100_excluding_biogenic.result is not None
+    assert record.minimum_requirements.gwp100_excluding_biogenic.result.value == 1.45
+    assert record.minimum_requirements.gwp100_including_biogenic.result is not None
+    assert record.minimum_requirements.gwp100_including_biogenic.result.value == 1.23
+    assert record.minimum_requirements.gwp100_excluding_biogenic.result.unit == (
+        "kg CO2e/kg product"
+    )
     assert record.minimum_requirements.system_boundary.result == "cradle-to-gate"
     assert "ISO 14067" in record.minimum_requirements.accepted_standard.result
     assert record.minimum_requirements.production_location.result == "France"
@@ -34,6 +35,4 @@ def test_heuristic_extractor_finds_common_pcf_fields() -> None:
     assert record.minimum_requirements.impact_assessment_method.result == "IPCC AR6"
     assert record.minimum_requirements.secondary_databases.result[0].name == "ecoinvent"
     assert record.minimum_requirements.secondary_databases.result[0].version == "3.10"
-    assert record.minimum_requirements.oil_and_gas_update.fulfilled is True
-    assert record.minimum_requirements.approved_secondary_database.fulfilled is True
     assert all(check["fulfilled"] for check in record.minimum_requirements.model_dump().values())

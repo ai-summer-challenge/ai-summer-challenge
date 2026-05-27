@@ -16,13 +16,13 @@ from pcf_pdf_extractor.domain import (
 
 def _minimum_requirements(reference_year: int | None = None) -> MinimumRequirements:
     return MinimumRequirements(
-        gwp100=PcfValueRequirementCheck(
+        gwp100_excluding_biogenic=PcfValueRequirementCheck(
             fulfilled=True,
             result=PcfValueResult(value=1.45, unit="kg CO2e/kg product"),
             evidence=None,
             reason="Value found.",
         ),
-        gwp100_biogenic=PcfValueRequirementCheck(
+        gwp100_including_biogenic=PcfValueRequirementCheck(
             fulfilled=False,
             result=None,
             evidence=None,
@@ -67,12 +67,6 @@ def _minimum_requirements(reference_year: int | None = None) -> MinimumRequireme
         oil_and_gas_update=BooleanRequirementCheck(
             fulfilled=False,
             result=False,
-            evidence=None,
-            reason="",
-        ),
-        approved_secondary_database=SecondaryDatabasesRequirementCheck(
-            fulfilled=False,
-            result=[],
             evidence=None,
             reason="",
         ),
