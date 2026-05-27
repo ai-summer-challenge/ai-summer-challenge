@@ -1,6 +1,7 @@
 import re
 
 from pcf_pdf_extractor.domain import (
+    BooleanRequirementCheck,
     MinimumRequirements,
     PCFRecord,
     PcfValueRequirementCheck,
@@ -141,6 +142,18 @@ class HeuristicPcfExtractor:
                     evidence=None,
                     reason="",
                 ),
+                oil_and_gas_update=BooleanRequirementCheck(
+                    fulfilled=False,
+                    result=self._find_oil_and_gas_update(text),
+                    evidence=None,
+                    reason="",
+                ),
+                approved_secondary_database=SecondaryDatabasesRequirementCheck(
+                    fulfilled=False,
+                    result=[],
+                    evidence=None,
+                    reason="",
+                ),
             ),
             extraction_notes=[
                 "Extracted with heuristic rules. Review missing or surprising fields before shipping."
@@ -238,6 +251,9 @@ class HeuristicPcfExtractor:
             return False
         return None
 
+    def _find_oil_and_gas_update(self, text: str) -> bool:
+        return bool(re.search(r"\boil\s+(?:and|&)\s+gas\s+update\b", text, flags=re.IGNORECASE))
+
     def _find_terms(self, text: str, terms: list[str]) -> list[str]:
         return [term for term in terms if re.search(re.escape(term), text, flags=re.IGNORECASE)]
 
@@ -256,17 +272,26 @@ class HeuristicPcfExtractor:
                 if not re.search(re.escape(database), line, flags=re.IGNORECASE):
                     continue
                 version = self._find_version_near_database(line, database)
-                canonical_name = database
+                canonical_name = self._canonical_database_name(line, database)
                 found[canonical_name.lower()] = SecondaryDatabase(name=canonical_name, version=version)
         return list(found.values())
 
     def _find_version_near_database(self, line: str, database: str) -> str | None:
         pattern = re.compile(
-            rf"{re.escape(database)}(?:\s*(?:database)?\s*)?(?:v|version)?\s*([0-9]+(?:\.[0-9]+)*)",
+            rf"{re.escape(database)}[^\d\n]{{0,60}}(?:v|version)?\s*([0-9]+(?:\.[0-9]+)*)",
             re.IGNORECASE,
         )
         match = pattern.search(line)
         return match.group(1) if match else None
+
+    def _canonical_database_name(self, line: str, database: str) -> str:
+        if database.lower() == "sphera" and re.search(
+            r"sphera\s+managed\s+content",
+            line,
+            flags=re.IGNORECASE,
+        ):
+            return "Sphera Managed Content"
+        return database
 
     def _numbers_from_line(self, line: str) -> list[float]:
         values: list[float] = []

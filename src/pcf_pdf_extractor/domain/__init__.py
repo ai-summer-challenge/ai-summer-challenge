@@ -1,6 +1,7 @@
 from pcf_pdf_extractor.domain.minimum_requirements import assess_minimum_requirements
 from pcf_pdf_extractor.domain.pcf import (
     BaseRequirementCheck,
+    BooleanRequirementCheck,
     MinimumRequirements,
     PCFExtractionResult,
     PCFRecord,
@@ -15,6 +16,7 @@ from pcf_pdf_extractor.domain.pcf import (
 
 __all__ = [
     "BaseRequirementCheck",
+    "BooleanRequirementCheck",
     "MinimumRequirements",
     "PCFExtractionResult",
     "PCFRecord",

@@ -1,6 +1,7 @@
 import re
 
 from pcf_pdf_extractor.domain.pcf import (
+    BooleanRequirementCheck,
     MinimumRequirements,
     PCFRecord,
     PcfValueRequirementCheck,
@@ -47,6 +48,11 @@ def assess_minimum_requirements(record: PCFRecord) -> MinimumRequirements:
             missing_reason="No impact assessment method was extracted.",
         ),
         secondary_databases=_secondary_databases_check(existing.secondary_databases),
+        oil_and_gas_update=_oil_and_gas_update_check(existing.oil_and_gas_update),
+        approved_secondary_database=_approved_secondary_database_check(
+            existing.approved_secondary_database,
+            existing.secondary_databases,
+        ),
     )
 
 
@@ -160,27 +166,80 @@ def _secondary_databases_check(
     check: SecondaryDatabasesRequirementCheck,
 ) -> SecondaryDatabasesRequirementCheck:
     has_databases = bool(check.result)
-    databases_without_versions = [database.name for database in check.result if not database.version]
-    fulfilled = has_databases and not databases_without_versions
+    unapproved_databases = [
+        database for database in check.result if not _is_approved_secondary_database(database)
+    ]
+    fulfilled = has_databases and not unapproved_databases
 
     if fulfilled:
-        reason = "Secondary emission factor databases and versions were extracted."
+        reason = (
+            "Only approved secondary databases were extracted: ecoinvent 3.10 or "
+            "Sphera Managed Content 2024."
+        )
     elif has_databases:
         reason = (
-            "At least one secondary emission factor database is missing a version: "
-            f"{', '.join(databases_without_versions)}."
+            "At least one secondary emission factor database is not allowed. Only "
+            "ecoinvent 3.10 or Sphera Managed Content 2024 are accepted. Found: "
+            f"{_format_databases(unapproved_databases)}."
         )
     else:
-        reason = "No secondary emission factor database with version was extracted."
+        reason = (
+            "No approved secondary emission factor database was extracted. Only ecoinvent "
+            "3.10 or Sphera Managed Content 2024 are accepted."
+        )
 
-    database_evidence = ", ".join(
-        f"{database.name} {database.version}".strip() for database in check.result
-    )
+    database_evidence = _format_databases(check.result)
     return SecondaryDatabasesRequirementCheck(
         fulfilled=fulfilled,
         result=check.result,
         evidence=check.evidence or database_evidence or None,
         reason=reason,
+    )
+
+
+def _oil_and_gas_update_check(check: BooleanRequirementCheck) -> BooleanRequirementCheck:
+    mentioned = check.result is True
+    return BooleanRequirementCheck(
+        fulfilled=mentioned,
+        result=mentioned,
+        evidence=check.evidence,
+        reason=(
+            "'Oil and gas update' is mentioned in the supplier documentation."
+            if mentioned
+            else "'Oil and gas update' was not found in the supplier documentation."
+        ),
+    )
+
+
+def _approved_secondary_database_check(
+    check: SecondaryDatabasesRequirementCheck,
+    secondary_databases_check: SecondaryDatabasesRequirementCheck,
+) -> SecondaryDatabasesRequirementCheck:
+    candidates = check.result or secondary_databases_check.result
+    approved_databases = [
+        database for database in candidates if _is_approved_secondary_database(database)
+    ]
+    fulfilled = bool(approved_databases)
+
+    evidence = check.evidence
+    if not evidence and approved_databases:
+        evidence = ", ".join(
+            f"{database.name} {database.version}".strip() for database in approved_databases
+        )
+
+    return SecondaryDatabasesRequirementCheck(
+        fulfilled=fulfilled,
+        result=approved_databases,
+        evidence=evidence,
+        reason=(
+            "An approved secondary database/version was found: ecoinvent 3.10 or "
+            "Sphera Managed Content 2024."
+            if fulfilled
+            else (
+                "Neither ecoinvent 3.10 nor Sphera Managed Content 2024 was found among "
+                "the secondary databases."
+            )
+        ),
     )
 
 
@@ -193,6 +252,22 @@ def _has_accepted_standard(standards: list[str]) -> bool:
         "14044",
     )
     return has_tfs or has_iso_14067 or has_iso_14040_and_14044
+
+
+def _is_approved_secondary_database(database) -> bool:
+    name = _normalize_text(database.name)
+    version = _normalize_text(database.version or "")
+    is_ecoinvent_310 = "ecoinvent" in name and version == "3 10"
+    is_sphera_2024 = (
+        "sphera" in name
+        and ("managed content" in name or "managedcontent" in name)
+        and version == "2024"
+    )
+    return is_ecoinvent_310 or is_sphera_2024
+
+
+def _normalize_text(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
 
 
 def _contains_iso(normalized_text: str, number: str) -> bool:
@@ -217,6 +292,10 @@ def _pcf_value_evidence(result: PcfValueResult | None) -> str | None:
     if result.unit:
         return f"{result.value} {result.unit}"
     return str(result.value)
+
+
+def _format_databases(databases) -> str:
+    return ", ".join(f"{database.name} {database.version}".strip() for database in databases)
 
 
 def _join_evidence(values: list[str | None]) -> str | None:

@@ -24,5 +24,6 @@ The application is organized around a single workflow:
 
 - Add OCR for scanned PDFs before LLM extraction.
 - Add confidence scores and field-level source page references.
+- Add a reference-data comparison layer for chemical identifiers and expected GWP values.
 - Add a human review screen or validation report before records are shipped.
 - Add a real API contract once the receiving company's endpoint is known.

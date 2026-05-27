@@ -144,4 +144,6 @@ Minimum requirement checks are generated for:
 - production location
 - reference year
 - impact assessment method
-- secondary emission factor databases and versions
+- secondary emission factor databases, limited to `ecoinvent 3.10` or `Sphera Managed Content 2024`
+- whether `oil and gas update` is mentioned
+- whether `ecoinvent 3.10` or `Sphera Managed Content 2024` is used as a secondary database; other secondary databases/versions fail the secondary database requirement

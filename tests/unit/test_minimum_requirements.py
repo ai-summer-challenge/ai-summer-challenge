@@ -1,4 +1,5 @@
 from pcf_pdf_extractor.domain import (
+    BooleanRequirementCheck,
     MinimumRequirements,
     PCFRecord,
     PcfValueRequirementCheck,
@@ -22,6 +23,7 @@ def _requirements(
     reference_year: int | None = None,
     impact_assessment_method: str | None = None,
     secondary_databases: list[SecondaryDatabase] | None = None,
+    oil_and_gas_update: bool = False,
 ) -> MinimumRequirements:
     return MinimumRequirements(
         gwp100=PcfValueRequirementCheck(
@@ -72,6 +74,18 @@ def _requirements(
             evidence=None,
             reason="",
         ),
+        oil_and_gas_update=BooleanRequirementCheck(
+            fulfilled=False,
+            result=oil_and_gas_update,
+            evidence=None,
+            reason="",
+        ),
+        approved_secondary_database=SecondaryDatabasesRequirementCheck(
+            fulfilled=False,
+            result=[],
+            evidence=None,
+            reason="",
+        ),
     )
 
 
@@ -89,7 +103,8 @@ def test_assessment_fulfills_all_requirements_with_two_pcf_values() -> None:
             production_location="France",
             reference_year=2024,
             impact_assessment_method="IPCC AR6",
-            secondary_databases=[SecondaryDatabase(name="ecoinvent", version="3.9")],
+            secondary_databases=[SecondaryDatabase(name="ecoinvent", version="3.10")],
+            oil_and_gas_update=True,
         ),
     )
 
@@ -125,3 +140,34 @@ def test_assessment_rejects_unaccepted_standard_and_missing_database_version() -
 
     assert checks.accepted_standard.fulfilled is False
     assert checks.secondary_databases.fulfilled is False
+
+
+def test_assessment_accepts_sphera_managed_content_2024() -> None:
+    record = PCFRecord(
+        minimum_requirements=_requirements(
+            gwp100=PcfValueResult(value=1.45, unit="kg CO2e/kg product"),
+            secondary_databases=[
+                SecondaryDatabase(name="Sphera Managed Content", version="2024")
+            ],
+        ),
+    )
+
+    checks = _assessed(record)
+
+    assert checks.approved_secondary_database.fulfilled is True
+    assert checks.approved_secondary_database.result[0].name == "Sphera Managed Content"
+    assert checks.secondary_databases.fulfilled is True
+
+
+def test_secondary_database_requirement_rejects_other_versions_even_when_database_is_known() -> None:
+    record = PCFRecord(
+        minimum_requirements=_requirements(
+            gwp100=PcfValueResult(value=1.45, unit="kg CO2e/kg product"),
+            secondary_databases=[SecondaryDatabase(name="ecoinvent", version="3.9")],
+        ),
+    )
+
+    checks = _assessed(record)
+
+    assert checks.secondary_databases.fulfilled is False
+    assert checks.approved_secondary_database.fulfilled is False

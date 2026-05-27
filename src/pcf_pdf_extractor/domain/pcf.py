@@ -56,6 +56,10 @@ class YearRequirementCheck(BaseRequirementCheck):
         return value
 
 
+class BooleanRequirementCheck(BaseRequirementCheck):
+    result: bool | None = None
+
+
 class StandardsRequirementCheck(BaseRequirementCheck):
     result: list[str] = Field(default_factory=list)
 
@@ -84,6 +88,8 @@ class MinimumRequirements(BaseModel):
     reference_year: YearRequirementCheck
     impact_assessment_method: TextRequirementCheck
     secondary_databases: SecondaryDatabasesRequirementCheck
+    oil_and_gas_update: BooleanRequirementCheck
+    approved_secondary_database: SecondaryDatabasesRequirementCheck
 
 
 class PCFRecord(BaseModel):
