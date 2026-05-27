@@ -1,4 +1,5 @@
 import httpx
+import pytest
 
 from pcf_pdf_extractor.infrastructure.llm.chat_completions_client import ChatCompletionsLlmClient
 
@@ -92,3 +93,28 @@ def test_http_error_detail_uses_openai_error_message() -> None:
     detail = client._response_error_detail(response)
 
     assert detail == "Invalid schema for response_format."
+
+
+def test_complete_json_wraps_network_errors() -> None:
+    client = ChatCompletionsLlmClient(
+        base_url="https://example.test/v1",
+        api_key="test",
+        model="test-model",
+    )
+
+    original_post = httpx.Client.post
+
+    def failing_post(*args, **kwargs):
+        request = httpx.Request("POST", "https://example.test/v1/chat/completions")
+        raise httpx.ConnectError("socket denied", request=request)
+
+    httpx.Client.post = failing_post
+    try:
+        with pytest.raises(RuntimeError, match="LLM API network request failed"):
+            client.complete_json(
+                system_prompt="sys",
+                user_prompt="usr",
+                response_schema={"type": "object", "properties": {}},
+            )
+    finally:
+        httpx.Client.post = original_post

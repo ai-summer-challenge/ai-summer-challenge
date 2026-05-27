@@ -116,6 +116,12 @@ pcf-extract ship data/processed/example.json
 Run the lightweight Streamlit review UI:
 
 ```bash
+.\run.ps1
+```
+
+If you prefer two terminals:
+
+```bash
 pip install -e ".[api,ui]"
 uvicorn pcf_pdf_extractor.api.app:app --reload
 ```

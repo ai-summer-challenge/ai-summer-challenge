@@ -8,24 +8,29 @@ from frontend.api_client import BackendApiError, PcfBackendClient
 from frontend.review import RecordReviewEdits, apply_record_review_edits
 
 DEFAULT_BACKEND_API_URL = "http://127.0.0.1:8000"
+EVONIK_PRIMARY = "#981d85"
+EVONIK_LIGHT = "#efd9ea"
 
 
 def main() -> None:
     st.set_page_config(page_title="PCF Review Cockpit", layout="wide")
     _ensure_session_state()
+    _apply_theme()
 
     st.title("PCF Review Cockpit")
 
     backend_client = PcfBackendClient(_backend_api_url())
-    extractor_kind, uploaded_pdf = _render_sidebar()
-    if uploaded_pdf is None and not st.session_state.records:
-        st.info("Upload a supplier PDF in the sidebar to extract and review PCF records.")
+    extractor_kind, uploaded_pdfs = _render_sidebar()
+    if not uploaded_pdfs and not st.session_state.records:
+        st.info("Upload one or more supplier PDFs in the sidebar to extract and review PCF records.")
         return
 
     if st.session_state.error_message:
         st.error(st.session_state.error_message)
 
     records: list[dict[str, Any]] = st.session_state.records
+    _render_batch_results()
+
     if not records:
         return
 
@@ -43,13 +48,14 @@ def _ensure_session_state() -> None:
     st.session_state.setdefault("records", [])
     st.session_state.setdefault("source_file_name", None)
     st.session_state.setdefault("error_message", None)
+    st.session_state.setdefault("batch_results", [])
 
 
 def _backend_api_url() -> str:
     return os.environ.get("BACKEND_API_URL", DEFAULT_BACKEND_API_URL)
 
 
-def _render_sidebar() -> tuple[str, Any]:
+def _render_sidebar() -> tuple[str, list[Any]]:
     with st.sidebar:
         st.header("Extraction")
         st.caption(f"Backend: {_backend_api_url()}")
@@ -59,52 +65,229 @@ def _render_sidebar() -> tuple[str, Any]:
             index=0,
             help="Use heuristic when LLM settings are not configured.",
         )
-        uploaded_pdf = st.file_uploader("Supplier PDF", type=["pdf"])
+        uploaded_pdfs = st.file_uploader(
+            "Supplier PDFs",
+            type=["pdf"],
+            accept_multiple_files=True,
+            help="You can upload and run multiple PDFs in one batch.",
+        )
 
-        if st.button("Extract", type="primary", disabled=uploaded_pdf is None):
-            if uploaded_pdf is not None:
-                _extract_uploaded_pdf(uploaded_pdf, extractor_kind)
+        if st.button("Extract PDFs", type="primary", disabled=not uploaded_pdfs):
+            _reset_extraction_state()
+            _extract_uploaded_pdfs(uploaded_pdfs, extractor_kind)
 
         if st.session_state.source_file_name:
-            st.caption(f"Current file: {st.session_state.source_file_name}")
+            st.caption(f"Last batch: {st.session_state.source_file_name}")
         if st.session_state.records:
             st.caption(f"Records extracted: {len(st.session_state.records)}")
 
-    return extractor_kind, uploaded_pdf
+    return extractor_kind, uploaded_pdfs
 
 
-def _extract_uploaded_pdf(uploaded_pdf: Any, extractor_kind: str) -> None:
+def _extract_uploaded_pdfs(uploaded_pdfs: list[Any], extractor_kind: str) -> None:
     st.session_state.error_message = None
     backend_client = PcfBackendClient(_backend_api_url())
-    try:
-        records = backend_client.extract_pdf(
-            file_name=uploaded_pdf.name,
-            file_bytes=uploaded_pdf.getvalue(),
-            extractor=extractor_kind,
+    all_records: list[dict[str, Any]] = []
+    batch_results: list[dict[str, Any]] = []
+    errors: list[str] = []
+    total_steps = max(len(uploaded_pdfs) * 3, 1)
+    completed_steps = 0
+
+    status = st.status("Running extraction batch...", expanded=True)
+    progress = st.progress(0, text="Initializing batch run...")
+
+    for uploaded_pdf in uploaded_pdfs:
+        status.write(f"Extracting data from `{uploaded_pdf.name}`")
+        try:
+            records = backend_client.extract_pdf(
+                file_name=uploaded_pdf.name,
+                file_bytes=uploaded_pdf.getvalue(),
+                extractor=extractor_kind,
+            )
+        except BackendApiError as exc:
+            batch_results.append(
+                {
+                    "file": uploaded_pdf.name,
+                    "status": "error",
+                    "records": 0,
+                    "message": str(exc),
+                }
+            )
+            errors.append(f"{uploaded_pdf.name}: {exc}")
+            completed_steps += 3
+            progress.progress(
+                min(int((completed_steps / total_steps) * 100), 100),
+                text=f"Failed: {uploaded_pdf.name}",
+            )
+            continue
+        except Exception as exc:
+            batch_results.append(
+                {
+                    "file": uploaded_pdf.name,
+                    "status": "error",
+                    "records": 0,
+                    "message": str(exc),
+                }
+            )
+            errors.append(f"{uploaded_pdf.name}: {exc}")
+            completed_steps += 3
+            progress.progress(
+                min(int((completed_steps / total_steps) * 100), 100),
+                text=f"Failed: {uploaded_pdf.name}",
+            )
+            continue
+
+        completed_steps += 1
+        progress.progress(
+            min(int((completed_steps / total_steps) * 100), 100),
+            text=f"Extracted: {uploaded_pdf.name}",
         )
-    except BackendApiError as exc:
-        st.session_state.records = []
-        st.session_state.error_message = (
-            f"{exc}. If LLM extraction is not configured yet, switch to heuristic."
+
+        if not records:
+            batch_results.append(
+                {
+                    "file": uploaded_pdf.name,
+                    "status": "empty",
+                    "records": 0,
+                    "message": "No PCF records extracted.",
+                }
+            )
+            completed_steps += 2
+            progress.progress(
+                min(int((completed_steps / total_steps) * 100), 100),
+                text=f"No records: {uploaded_pdf.name}",
+            )
+            continue
+
+        status.write(f"Validating minimum requirements for `{uploaded_pdf.name}`")
+        refreshed_records: list[dict[str, Any]] = []
+        for record in records:
+            source_file_name = uploaded_pdf.name
+            record["_source_file_name"] = uploaded_pdf.name
+            try:
+                refreshed_record = backend_client.assess_record(_without_ui_metadata(record))
+                refreshed_record["_source_file_name"] = source_file_name
+                refreshed_records.append(refreshed_record)
+            except BackendApiError:
+                refreshed_records.append(record)
+
+        completed_steps += 1
+        progress.progress(
+            min(int((completed_steps / total_steps) * 100), 100),
+            text=f"Validated: {uploaded_pdf.name}",
         )
-        return
-    except Exception as exc:
+
+        for refreshed_record in refreshed_records:
+            all_records.append(refreshed_record)
+
+        batch_results.append(
+            {
+                "file": uploaded_pdf.name,
+                "status": "ok",
+                "records": len(refreshed_records),
+                "message": "",
+            }
+        )
+        completed_steps += 1
+        progress.progress(
+            min(int((completed_steps / total_steps) * 100), 100),
+            text=f"Finished: {uploaded_pdf.name}",
+        )
+
+    if not all_records:
         st.session_state.records = []
-        st.session_state.error_message = f"Extraction failed: {exc}"
+        st.session_state.batch_results = batch_results
+        status.update(label="Batch finished with errors", state="error", expanded=True)
+        progress.progress(100, text="Batch finished")
+        if errors:
+            st.session_state.error_message = "Batch extraction failed for all files."
+        else:
+            st.session_state.error_message = "No PCF records were extracted from the selected PDFs."
         return
 
-    if not records:
-        st.session_state.records = []
-        st.session_state.error_message = "No PCF records were extracted from this PDF."
-        return
+    st.session_state.records = all_records
+    st.session_state.batch_results = batch_results
+    st.session_state.source_file_name = f"{len(uploaded_pdfs)} file(s)"
+    if errors:
+        status.update(label="Batch finished with partial errors", state="error", expanded=False)
+    else:
+        status.update(label="Batch finished successfully", state="complete", expanded=False)
+    progress.progress(100, text="Batch finished")
+    if errors:
+        st.session_state.error_message = "Some files failed. Check Batch results below."
 
-    st.session_state.records = records
-    st.session_state.source_file_name = uploaded_pdf.name
+
+def _reset_extraction_state() -> None:
+    st.session_state.records = []
+    st.session_state.batch_results = []
+    st.session_state.source_file_name = None
+    st.session_state.error_message = None
+    _clear_review_widget_state()
+
+
+def _clear_review_widget_state() -> None:
+    dynamic_prefixes = (
+        "company-name-",
+        "product-name-",
+        "extraction-notes-",
+    )
+    for key in list(st.session_state.keys()):
+        if key.startswith(dynamic_prefixes):
+            del st.session_state[key]
+
+
+def _render_batch_results() -> None:
+    results: list[dict[str, Any]] = st.session_state.batch_results
+    if not results:
+        return
+    st.subheader("Batch results")
+    total_files = len(results)
+    ok_files = sum(1 for item in results if item.get("status") == "ok")
+    empty_files = sum(1 for item in results if item.get("status") == "empty")
+    error_files = sum(1 for item in results if item.get("status") == "error")
+    total_records = sum(int(item.get("records") or 0) for item in results)
+
+    metric_a, metric_b, metric_c, metric_d = st.columns(4)
+    metric_a.metric("Files", total_files)
+    metric_b.metric("Records", total_records)
+    metric_c.metric("Successful", ok_files)
+    metric_d.metric("With issues", empty_files + error_files)
+
+    for item in results:
+        file_name = str(item.get("file") or "unknown.pdf")
+        status = str(item.get("status") or "unknown")
+        records = int(item.get("records") or 0)
+        message = str(item.get("message") or "")
+
+        if status == "ok":
+            badge = "<span class='batch-badge ok'>OK</span>"
+            subtitle = f"{records} record(s) extracted"
+        elif status == "empty":
+            badge = "<span class='batch-badge empty'>EMPTY</span>"
+            subtitle = "No records extracted"
+        else:
+            badge = "<span class='batch-badge error'>ERROR</span>"
+            subtitle = message or "Extraction failed"
+
+        st.markdown(
+            (
+                "<div class='batch-row'>"
+                f"<div class='batch-main'><div class='batch-file'>{file_name}</div>"
+                f"<div class='batch-sub'>{subtitle}</div></div>"
+                f"<div class='batch-side'>{badge}</div>"
+                "</div>"
+            ),
+            unsafe_allow_html=True,
+        )
 
 
 def _render_record_selector(records: list[dict[str, Any]]) -> int:
     labels = [
-        f"{index + 1:02d} - {record.get('product_name') or record.get('company_name') or 'Unnamed record'}"
+        (
+            f"{index + 1:02d} - "
+            f"{record.get('product_name') or record.get('company_name') or 'Unnamed record'} "
+            f"({record.get('_source_file_name', 'unknown source')})"
+        )
         for index, record in enumerate(records)
     ]
     selected_label = st.selectbox("Extracted record", options=labels)
@@ -113,31 +296,26 @@ def _render_record_selector(records: list[dict[str, Any]]) -> int:
 
 def _render_record_review(record: dict[str, Any], record_index: int) -> dict[str, Any]:
     st.subheader("Review")
-    left, right = st.columns(2)
-    with left:
+    gwp_left, gwp_right = st.columns(2)
+    with gwp_left:
+        st.metric("GWP100 excl. biogenic", _gwp_display(record, "gwp100"))
+    with gwp_right:
+        st.metric("GWP100 incl. biogenic", _gwp_display(record, "gwp100_biogenic"))
+
+    names_left, names_right = st.columns(2)
+    with names_left:
         company_name = st.text_input(
             "Company name",
             value=record.get("company_name") or "",
             key=f"company-name-{record_index}",
         )
+    with names_right:
         product_name = st.text_input(
             "Product name",
             value=record.get("product_name") or "",
             key=f"product-name-{record_index}",
         )
-    with right:
-        biogenic_carbon_content = st.text_input(
-            "Biogenic carbon content",
-            value=record.get("biogenic_carbon_content") or "",
-            key=f"biogenic-carbon-{record_index}",
-        )
-        fossil_label = _fossil_label(record.get("is_fossil_or_non_biobased_product"))
-        fossil_selection = st.selectbox(
-            "Fossil or non-biobased product",
-            options=["Unknown", "Yes", "No"],
-            index=["Unknown", "Yes", "No"].index(fossil_label),
-            key=f"fossil-product-{record_index}",
-        )
+    biogenic_carbon_content = record.get("biogenic_carbon_content")
 
     extraction_notes = record.get("extraction_notes") or []
     extraction_notes_text = st.text_area(
@@ -152,7 +330,7 @@ def _render_record_review(record: dict[str, Any], record_index: int) -> dict[str
             company_name=company_name,
             product_name=product_name,
             biogenic_carbon_content=biogenic_carbon_content,
-            is_fossil_or_non_biobased_product=_fossil_value(fossil_selection),
+            is_fossil_or_non_biobased_product=record.get("is_fossil_or_non_biobased_product"),
             extraction_notes_text=extraction_notes_text,
         ),
     )
@@ -162,8 +340,13 @@ def _assess_reviewed_record(
     backend_client: PcfBackendClient,
     reviewed_record: dict[str, Any],
 ) -> dict[str, Any]:
+    assessment_payload = _without_ui_metadata(reviewed_record)
     try:
-        return backend_client.assess_record(reviewed_record)
+        refreshed = backend_client.assess_record(assessment_payload)
+        # Keep UI metadata for navigation in the frontend.
+        if "_source_file_name" in reviewed_record:
+            refreshed["_source_file_name"] = reviewed_record["_source_file_name"]
+        return refreshed
     except BackendApiError as exc:
         st.warning(f"Could not refresh minimum requirement checks: {exc}")
         return reviewed_record
@@ -173,9 +356,16 @@ def _render_requirements(record: dict[str, Any]) -> None:
     st.subheader("Minimum requirements")
     minimum_requirements = record.get("minimum_requirements") or {}
     requirement_rows = []
+    fulfilled_count = 0
+    total_count = 0
+
     for name, check in minimum_requirements.items():
         if not isinstance(check, dict):
             continue
+        total_count += 1
+        fulfilled = check.get("fulfilled") is True
+        if fulfilled:
+            fulfilled_count += 1
         requirement_rows.append(
             {
                 "requirement": name,
@@ -185,12 +375,25 @@ def _render_requirements(record: dict[str, Any]) -> None:
                 "reason": check.get("reason") or "",
             }
         )
+
+    missing_count = max(total_count - fulfilled_count, 0)
+    all_passed = total_count > 0 and missing_count == 0
+    if all_passed:
+        st.success("All minimum requirements are fulfilled for this record.")
+    else:
+        st.warning(f"{missing_count} requirement(s) still open.")
+
+    metric_a, metric_b, metric_c = st.columns(3)
+    metric_a.metric("Total", total_count)
+    metric_b.metric("Fulfilled", fulfilled_count)
+    metric_c.metric("Open", missing_count)
+
     st.dataframe(requirement_rows, hide_index=True, use_container_width=True)
 
 
 def _render_json_export(record: dict[str, Any], record_index: int) -> None:
     st.subheader("Reviewed JSON")
-    payload = _without_none_values(record)
+    payload = _without_none_values(_without_ui_metadata(record))
     formatted_json = json.dumps(payload, indent=2, ensure_ascii=False)
     st.code(formatted_json, language="json")
     st.download_button(
@@ -213,12 +416,36 @@ def _without_none_values(value: Any) -> Any:
     return value
 
 
+def _without_ui_metadata(record: dict[str, Any]) -> dict[str, Any]:
+    # Internal UI helper fields must not be sent to strict backend validators.
+    return {key: value for key, value in record.items() if not key.startswith("_")}
+
+
 def _format_result(value: Any) -> str:
     if value is None:
         return ""
     if isinstance(value, str):
         return value
     return json.dumps(value, ensure_ascii=False)
+
+
+def _gwp_display(record: dict[str, Any], requirement_key: str) -> str:
+    minimum_requirements = record.get("minimum_requirements") or {}
+    check = minimum_requirements.get(requirement_key)
+    if not isinstance(check, dict):
+        return "n/a"
+
+    result = check.get("result")
+    if not isinstance(result, dict):
+        return "n/a"
+
+    value = result.get("value")
+    unit = result.get("unit")
+    if value is None:
+        return "n/a"
+    if isinstance(unit, str) and unit.strip():
+        return f"{value} {unit}"
+    return str(value)
 
 
 def _record_slug(record: dict[str, Any]) -> str:
@@ -242,6 +469,78 @@ def _fossil_value(label: str) -> bool | None:
     if label == "No":
         return False
     return None
+
+
+def _apply_theme() -> None:
+    st.markdown(
+        f"""
+        <style>
+        [data-testid="stSidebar"] {{
+            background: {EVONIK_LIGHT};
+        }}
+        [data-testid="stAppViewContainer"] {{
+            background: linear-gradient(180deg, #ffffff 0%, #fbf5fa 100%);
+        }}
+        .stButton > button[kind="primary"] {{
+            background-color: {EVONIK_PRIMARY};
+            border-color: {EVONIK_PRIMARY};
+        }}
+        .stButton > button[kind="primary"]:hover {{
+            background-color: #7f176f;
+            border-color: #7f176f;
+        }}
+        h1, h2, h3 {{
+            color: {EVONIK_PRIMARY};
+        }}
+        .batch-row {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid #e6e1e6;
+            border-radius: 10px;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            background: #ffffff;
+        }}
+        .batch-main {{
+            min-width: 0;
+        }}
+        .batch-file {{
+            font-weight: 600;
+            color: #222;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 80vw;
+        }}
+        .batch-sub {{
+            color: #666;
+            font-size: 0.86rem;
+            margin-top: 2px;
+        }}
+        .batch-badge {{
+            border-radius: 999px;
+            padding: 3px 10px;
+            font-size: 0.74rem;
+            font-weight: 700;
+            letter-spacing: 0;
+        }}
+        .batch-badge.ok {{
+            color: #136f47;
+            background: #e7f6ef;
+        }}
+        .batch-badge.empty {{
+            color: #8f5a00;
+            background: #fff3d6;
+        }}
+        .batch-badge.error {{
+            color: #a0233e;
+            background: #fde9ef;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 if __name__ == "__main__":

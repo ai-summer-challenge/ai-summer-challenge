@@ -31,6 +31,14 @@ class PcfBackendClient:
             raise BackendApiError("Backend response did not include a record object.")
         return payload
 
+    def runtime_status(self) -> dict[str, Any]:
+        with httpx.Client(timeout=self._timeout_seconds) as client:
+            response = client.get(f"{self._base_url}/api/runtime")
+        payload = self._raise_for_status(response)
+        if not isinstance(payload, dict):
+            raise BackendApiError("Backend response did not include a runtime status object.")
+        return payload
+
     def _raise_for_status(self, response: httpx.Response) -> dict[str, Any]:
         try:
             payload = response.json()
@@ -46,4 +54,3 @@ class PcfBackendClient:
         if isinstance(detail, str):
             raise BackendApiError(detail)
         raise BackendApiError(f"Backend request failed with HTTP {response.status_code}.")
-

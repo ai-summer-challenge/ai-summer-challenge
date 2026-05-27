@@ -6,7 +6,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from pcf_pdf_extractor.application import ExtractPcfFromPdf
-from pcf_pdf_extractor.config import get_settings
+from pcf_pdf_extractor.config import Settings, get_settings
 from pcf_pdf_extractor.domain import PCFExtractionResult, PCFRecord, assess_minimum_requirements
 from pcf_pdf_extractor.extraction import ExtractorKind, build_extractor
 
@@ -17,9 +17,21 @@ class ErrorResponse(BaseModel):
     detail: str
 
 
+class RuntimeStatusResponse(BaseModel):
+    llm_available: bool
+    llm_message: str | None = None
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/runtime", response_model=RuntimeStatusResponse)
+def runtime_status() -> RuntimeStatusResponse:
+    settings = get_settings()
+    llm_available, llm_message = _llm_runtime_status(settings)
+    return RuntimeStatusResponse(llm_available=llm_available, llm_message=llm_message)
 
 
 @app.post(
@@ -61,3 +73,17 @@ def _write_upload_to_temporary_pdf(file: UploadFile) -> Path:
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temporary_pdf:
         temporary_pdf.write(file.file.read())
         return Path(temporary_pdf.name)
+
+
+def _llm_runtime_status(settings: Settings) -> tuple[bool, str | None]:
+    missing_fields = []
+    if settings.llm_api_base_url is None:
+        missing_fields.append("LLM_API_BASE_URL")
+    if settings.llm_api_key is None:
+        missing_fields.append("LLM_API_KEY")
+    if settings.llm_model is None:
+        missing_fields.append("LLM_MODEL")
+
+    if missing_fields:
+        return False, f"Missing: {', '.join(missing_fields)}"
+    return True, None
