@@ -17,7 +17,7 @@ def main() -> None:
     _ensure_session_state()
     _apply_theme()
 
-    st.title("PCF Review Cockpit")
+    st.title("PCF Review")
 
     backend_client = PcfBackendClient(_backend_api_url())
     extractor_kind, uploaded_pdfs = _render_sidebar()
