@@ -113,6 +113,26 @@ Ship a reviewed record to the configured company API:
 pcf-extract ship data/processed/example.json
 ```
 
+Run the lightweight Streamlit review UI:
+
+```bash
+pip install -e ".[api,ui]"
+uvicorn pcf_pdf_extractor.api.app:app --reload
+```
+
+In a second shell:
+
+```bash
+$env:BACKEND_API_URL="http://127.0.0.1:8000"
+streamlit run frontend/streamlit_app.py
+```
+
+Or run the separated backend and frontend containers together:
+
+```bash
+docker compose up --build
+```
+
 The LLM extractor asks for a top-level `records` array and validates each item against the `PCFRecord` domain model before anything is exported or shipped. The heuristic extractor remains useful for tests, debugging, and cases where API access is not available.
 
 Minimum requirement checks are generated for:

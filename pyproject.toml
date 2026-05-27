@@ -21,6 +21,14 @@ dev = [
     "pytest>=8.2",
     "ruff>=0.5",
 ]
+ui = [
+    "streamlit>=1.36",
+]
+api = [
+    "fastapi>=0.115",
+    "python-multipart>=0.0.9",
+    "uvicorn[standard]>=0.30",
+]
 
 [project.scripts]
 pcf-extract = "pcf_pdf_extractor.cli:app"
