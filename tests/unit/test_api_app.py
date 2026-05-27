@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 from pcf_pdf_extractor.api.app import app
 from pcf_pdf_extractor.domain import (
+    BooleanRequirementCheck,
     MinimumRequirements,
     PcfValueRequirementCheck,
     PcfValueResult,
@@ -57,6 +58,18 @@ def _minimum_requirements() -> MinimumRequirements:
             reason="",
         ),
         secondary_databases=SecondaryDatabasesRequirementCheck(
+            fulfilled=False,
+            result=[],
+            evidence=None,
+            reason="",
+        ),
+        oil_and_gas_update=BooleanRequirementCheck(
+            fulfilled=False,
+            result=False,
+            evidence=None,
+            reason="",
+        ),
+        approved_secondary_database=SecondaryDatabasesRequirementCheck(
             fulfilled=False,
             result=[],
             evidence=None,
