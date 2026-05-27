@@ -1,7 +1,7 @@
 import json
 from typing import Any, Protocol
 
-from pcf_pdf_extractor.domain import PCFRecord, assess_minimum_requirements
+from pcf_pdf_extractor.domain import PCFExtractionResult, PCFRecord, assess_minimum_requirements
 
 
 class JsonLlmClient(Protocol):
@@ -24,8 +24,8 @@ class LlmPcfExtractor:
         self._client = client
         self._max_input_chars = max_input_chars
 
-    def extract(self, text: str) -> PCFRecord:
-        schema = PCFRecord.model_json_schema()
+    def extract(self, text: str) -> list[PCFRecord]:
+        schema = PCFExtractionResult.model_json_schema()
         truncated_text = text[: self._max_input_chars]
         was_truncated = len(text) > len(truncated_text)
 
@@ -34,59 +34,168 @@ class LlmPcfExtractor:
             user_prompt=self._user_prompt(truncated_text, schema, was_truncated),
             response_schema=schema,
         )
-        payload = self._normalize_payload(payload)
-        record = PCFRecord.model_validate(payload)
-        record.extraction_notes = [
-            *record.extraction_notes,
-            "Extracted with an LLM. Human review is required before shipping.",
-        ]
-        if was_truncated:
-            record.extraction_notes.append(
-                f"LLM input was truncated to {self._max_input_chars} characters."
-            )
-        record.minimum_requirements = assess_minimum_requirements(record)
-        return record
+        payload = self._normalize_extraction_payload(payload)
+        result = PCFExtractionResult.model_validate(payload)
+        for record in result.records:
+            record.extraction_notes = [
+                *record.extraction_notes,
+                "Extracted with an LLM. Human review is required before shipping.",
+            ]
+            if was_truncated:
+                record.extraction_notes.append(
+                    f"LLM input was truncated to {self._max_input_chars} characters."
+                )
+            record.minimum_requirements = assess_minimum_requirements(record)
+        return result.records
 
-    def _normalize_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def _normalize_extraction_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
+        records = payload.get("records")
+        if isinstance(records, list):
+            return {
+                "records": [
+                    self._normalize_record_payload(record)
+                    for record in records
+                    if isinstance(record, dict)
+                ]
+            }
+
+        return {"records": [self._normalize_record_payload(payload)]}
+
+    def _normalize_record_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
         normalized = dict(payload)
+        legacy_gwp100 = normalized.pop("gwp100", None)
+        legacy_gwp100_biogenic = normalized.pop("gwp100_biogenic", None)
+        legacy_gwp100_unit = normalized.pop("gwp100_unit", None)
 
-        if normalized.get("gwp100") is None:
-            normalized["gwp100"] = {}
+        if isinstance(legacy_gwp100, dict):
+            legacy_gwp100_biogenic = legacy_gwp100.get("with_biogenic_carbon")
+            legacy_gwp100_unit = legacy_gwp100.get("unit")
+            legacy_gwp100 = legacy_gwp100.get("without_biogenic_carbon")
 
         for field_name in [
-            "standards",
-            "secondary_databases",
-            "minimum_requirements",
             "extraction_notes",
         ]:
             if normalized.get(field_name) is None:
                 normalized[field_name] = []
 
+        minimum_requirements = normalized.get("minimum_requirements")
+        if not isinstance(minimum_requirements, dict):
+            minimum_requirements = {}
+            normalized["minimum_requirements"] = minimum_requirements
+
+        self._set_legacy_pcf_requirement(
+            minimum_requirements,
+            field_name="gwp100",
+            value=legacy_gwp100,
+            unit=legacy_gwp100_unit,
+        )
+        self._set_legacy_pcf_requirement(
+            minimum_requirements,
+            field_name="gwp100_biogenic",
+            value=legacy_gwp100_biogenic,
+            unit=legacy_gwp100_unit,
+        )
+        self._fill_missing_requirement_defaults(minimum_requirements)
+
         return normalized
+
+    def _set_legacy_pcf_requirement(
+        self,
+        minimum_requirements: dict[str, Any],
+        *,
+        field_name: str,
+        value: Any,
+        unit: Any,
+    ) -> None:
+        if field_name in minimum_requirements or value is None:
+            return
+        minimum_requirements[field_name] = {
+            "fulfilled": True,
+            "result": {"value": value, "unit": unit},
+            "evidence": None,
+            "reason": "Migrated from legacy top-level PCF field.",
+        }
+
+    def _fill_missing_requirement_defaults(self, minimum_requirements: dict[str, Any]) -> None:
+        for field_name in [
+            "gwp100",
+            "gwp100_biogenic",
+            "system_boundary",
+            "production_location",
+            "reference_year",
+            "impact_assessment_method",
+        ]:
+            minimum_requirements.setdefault(
+                field_name,
+                {
+                    "fulfilled": False,
+                    "result": None,
+                    "evidence": None,
+                    "reason": "No value was extracted.",
+                },
+            )
+
+        for field_name in ["accepted_standard", "secondary_databases"]:
+            minimum_requirements.setdefault(
+                field_name,
+                {
+                    "fulfilled": False,
+                    "result": [],
+                    "evidence": None,
+                    "reason": "No value was extracted.",
+                },
+            )
 
     def _system_prompt(self) -> str:
         return (
             "You extract Product Carbon Footprint data from supplier documentation text and "
             "assess whether the documentation fulfills minimum requirements. "
-            "Return only a valid JSON object. Do not infer facts that are not in the text. "
-            "Use null for unknown scalar fields, [] for unknown list fields, and {} for "
-            "unknown nested objects. "
-            "PCF GWP 100 values must be numbers only; put units in gwp100.unit. "
+            "Return only a valid JSON object with a top-level records array. "
+            "Create one records item for each distinct chemical or product with PCF data in "
+            "the supplier documentation. Do not merge different chemicals into one record. "
+            "If a document contains several chemicals/products in a table, return several "
+            "records. If document-level facts such as system boundary, standard, production "
+            "location, reference year, impact method, or databases apply to every chemical, "
+            "repeat those facts in each relevant record. "
+            "Do not infer facts that are not in the text. "
+            "Use null for unknown scalar fields and [] for unknown list fields. "
+            "For every record, return source_file and raw_text_sha256 as null; the application "
+            "fills them after the LLM response. "
+            "Do not return top-level fields named gwp100, gwp100_biogenic, gwp100_unit, "
+            "system_boundary, standards, product_location, reference_year, "
+            "impact_assessment_method, or secondary_databases. Put those extracted values "
+            "inside minimum_requirements.<field>.result. "
+            "minimum_requirements.gwp100.result must be an object with value and unit for "
+            "the product PCF GWP 100 value excluding biogenic carbon. "
+            "minimum_requirements.gwp100_biogenic.result must be an object with value and "
+            "unit when the product PCF GWP 100 value including biogenic carbon is reported. "
+            "If the document reports only one GWP 100 value and clearly indicates the product "
+            "is fossil or not biobased, put that value in minimum_requirements.gwp100.result "
+            "and leave minimum_requirements.gwp100_biogenic.result null while marking the "
+            "biogenic requirement fulfilled by exception. "
             "Extract biogenic_carbon_content when stated, and set "
             "is_fossil_or_non_biobased_product only when the text says the product is fossil, "
             "not biobased, non-biobased, or has zero biogenic carbon content. "
             "Preserve standard names and impact assessment method names as written, for example "
             "TfS, ISO 14040, ISO 14044, ISO 14067, IPCC AR6, CML2001. "
             "For secondary emission factor databases, return one object per database with name "
-            "and version when a version is available. "
-            "For minimum_requirements, return exactly one check for each criterion_id: "
-            "pcf_gwp100_values, system_boundary, accepted_standard, production_location, "
-            "reference_year, impact_assessment_method, secondary_databases. "
+            "and version in minimum_requirements.secondary_databases.result. "
+            "For minimum_requirements, return a named object, not a list. Do not include "
+            "criterion_id. It must contain these fields: gwp100, gwp100_biogenic, "
+            "system_boundary, accepted_standard, production_location, reference_year, "
+            "impact_assessment_method, secondary_databases. "
+            "Every minimum_requirements field must contain fulfilled, result, evidence, "
+            "and reason. If fulfilled is true, result must contain the extracted value or "
+            "values. For example, production_location.result can be 'US', "
+            "system_boundary.result can be 'cradle-to-gate', reference_year.result can be "
+            "2024, and accepted_standard.result can be ['ISO 14067']. "
             "Mark fulfilled true only when the supplier documentation contains enough evidence. "
-            "For pcf_gwp100_values, fulfilled true requires both GWP 100 values including and "
-            "excluding biogenic carbon, except that one value excluding biogenic carbon is enough "
-            "only when the documentation indicates the product is fossil or not biobased, for "
-            "example biogenic carbon content equals 0. "
+            "For minimum_requirements.gwp100, fulfilled true requires a numeric GWP 100 value "
+            "excluding biogenic carbon in result.value. "
+            "For minimum_requirements.gwp100_biogenic, fulfilled true requires a numeric "
+            "GWP 100 value including biogenic carbon in result.value, except that it is also "
+            "fulfilled with result null when the documentation indicates the product is fossil "
+            "or not biobased, for example biogenic carbon content equals 0. "
             "For accepted_standard, fulfilled true only for TfS guideline, ISO 14040/14044 "
             "together, or ISO 14067. Other standards do not fulfill this criterion. "
             "For secondary_databases, fulfilled true only when database names and versions are "
@@ -110,22 +219,28 @@ class LlmPcfExtractor:
         return (
             f"{truncation_note}\n\n"
             "Minimum requirement checklist to assess:\n"
-            "1. pcf_gwp100_values: two product PCF GWP 100 values are required, one including "
-            "and one excluding biogenic carbon. Exception: if the documentation indicates the "
-            "product is fossil or not biobased, such as biogenic carbon content = 0, one value "
-            "excluding biogenic carbon is sufficient.\n"
-            "2. system_boundary: the PCF calculation system boundary must be documented, for "
+            "1. gwp100: mandatory numeric product PCF GWP 100 value excluding biogenic carbon. "
+            "If fulfilled, result must be {\"value\": number, \"unit\": string or null}.\n"
+            "2. gwp100_biogenic: numeric product PCF GWP 100 value including biogenic carbon. "
+            "Exception: if the documentation indicates the product is fossil or not biobased, "
+            "such as biogenic carbon content = 0, gwp100 alone is sufficient and this "
+            "requirement is fulfilled by the exception. If a value is present, result must be "
+            "{\"value\": number, \"unit\": string or null}; if fulfilled by exception, "
+            "result must be null.\n"
+            "3. system_boundary: the PCF calculation system boundary must be documented, for "
             "example cradle-to-gate.\n"
-            "3. accepted_standard: only TfS guideline, ISO 14040/14044 together, or ISO 14067 "
+            "4. accepted_standard: only TfS guideline, ISO 14040/14044 together, or ISO 14067 "
             "are accepted.\n"
-            "4. production_location: country or region must be documented.\n"
-            "5. reference_year: reference year of data collection must be documented.\n"
-            "6. impact_assessment_method: PCF impact assessment method must be documented, "
+            "5. production_location: country or region must be documented.\n"
+            "6. reference_year: reference year of data collection must be documented.\n"
+            "7. impact_assessment_method: PCF impact assessment method must be documented, "
             "for example IPCC AR6, CML2001, ISO14067, or another named method.\n"
-            "7. secondary_databases: secondary emission factor database names and versions "
+            "8. secondary_databases: secondary emission factor database names and versions "
             "must be documented.\n\n"
-            "For every checklist item, add one minimum_requirements entry with fulfilled true "
-            "or false. When evidence is missing or ambiguous, fulfilled must be false.\n\n"
+            "For every checklist item, add one named minimum_requirements field with fulfilled true "
+            "or false. When evidence is missing or ambiguous, fulfilled must be false. "
+            "When fulfilled is true, include the extracted answer in result, except for "
+            "gwp100_biogenic fulfilled by fossil/non-biobased exception where result is null.\n\n"
             "Return JSON matching this schema:\n"
             f"{json.dumps(schema, indent=2)}\n\n"
             "PDF text:\n"

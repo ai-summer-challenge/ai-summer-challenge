@@ -6,16 +6,32 @@ The target fields are:
 
 - company name
 - product name
-- PCF GWP 100 values with and without biogenic carbon
 - biogenic carbon content and fossil/non-biobased indication when relevant
-- unit
-- system boundary, for example `cradle-to-gate`
-- standards used, for example TfS, ISO 14040, ISO 14044, ISO 14067
-- product location
-- reference year of data collection
-- impact assessment method, for example IPCC AR6 or CML2001
-- secondary emission factor databases and versions
-- per-criterion minimum requirement checks with `fulfilled`, `evidence`, and `reason`
+- named minimum requirement checks with `fulfilled`, `result`, `evidence`, and `reason`
+
+The minimum requirement checks are the source of truth for extracted requirement values. For example:
+
+```json
+{
+  "minimum_requirements": {
+    "gwp100": {
+      "fulfilled": true,
+      "result": {
+        "value": 1.45,
+        "unit": "kg CO2e/kg product"
+      },
+      "evidence": "PCF GWP 100 without biogenic carbon: 1.45 kg CO2e/kg product",
+      "reason": "GWP 100 excluding biogenic carbon was extracted as a numeric value."
+    },
+    "production_location": {
+      "fulfilled": true,
+      "result": "US",
+      "evidence": "Production location: US",
+      "reason": "Production location found."
+    }
+  }
+}
+```
 
 ## Project Tree
 
@@ -50,10 +66,31 @@ cp .env.example .env
 
 ## Usage
 
-Extract a structured record from a PDF:
+Extract structured records from a PDF:
 
 ```bash
 pcf-extract extract data/incoming/example.pdf --output data/processed/example.json
+```
+
+If the PDF contains one chemical/product, this writes one JSON file. If the PDF contains
+several chemicals/products, the app writes one JSON file per chemical. For example, with:
+
+```bash
+pcf-extract extract data/incoming/multi_product.pdf --output data/processed/multi_product.json
+```
+
+multi-product output is written to:
+
+```text
+data/processed/multi_product/
+├── 01-first-product-name.json
+└── 02-second-product-name.json
+```
+
+You can also pass a directory directly:
+
+```bash
+pcf-extract extract data/incoming/multi_product.pdf --output data/processed/multi_product/
 ```
 
 LLM extraction is the default. Configure it in `.env` first:
@@ -76,11 +113,12 @@ Ship a reviewed record to the configured company API:
 pcf-extract ship data/processed/example.json
 ```
 
-The LLM extractor validates model output against the `PCFRecord` domain model before anything is exported or shipped. The heuristic extractor remains useful for tests, debugging, and cases where API access is not available.
+The LLM extractor asks for a top-level `records` array and validates each item against the `PCFRecord` domain model before anything is exported or shipped. The heuristic extractor remains useful for tests, debugging, and cases where API access is not available.
 
 Minimum requirement checks are generated for:
 
-- PCF GWP 100 values
+- PCF GWP 100 value excluding biogenic carbon
+- PCF GWP 100 including biogenic carbon, unless the fossil/non-biobased exception applies
 - system boundary
 - accepted standard
 - production location

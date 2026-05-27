@@ -1,9 +1,15 @@
 import re
 
 from pcf_pdf_extractor.domain import (
-    Gwp100Values,
+    MinimumRequirements,
     PCFRecord,
+    PcfValueRequirementCheck,
+    PcfValueResult,
     SecondaryDatabase,
+    SecondaryDatabasesRequirementCheck,
+    StandardsRequirementCheck,
+    TextRequirementCheck,
+    YearRequirementCheck,
     assess_minimum_requirements,
 )
 
@@ -54,10 +60,22 @@ class HeuristicPcfExtractor:
         "Carbon Minds",
     ]
 
-    def extract(self, text: str) -> PCFRecord:
+    def extract(self, text: str) -> list[PCFRecord]:
         lines = [line.strip() for line in text.splitlines() if line.strip()]
         standards = self._find_terms(text, self._STANDARDS)
         secondary_databases = self._find_databases(lines)
+        gwp100 = self._find_primary_gwp_value(lines)
+        gwp100_biogenic = self._find_gwp_value(
+            lines,
+            [
+                "with biogenic",
+                "including biogenic",
+                "incl. biogenic",
+                "including bio",
+                "incl. bio",
+            ],
+        )
+        gwp100_unit = self._find_unit(lines)
 
         record = PCFRecord(
             company_name=self._find_labeled_value(lines, ["company", "supplier", "manufacturer"]),
@@ -67,32 +85,69 @@ class HeuristicPcfExtractor:
                 ["biogenic carbon content", "bio carbon content", "biobased carbon content"],
             ),
             is_fossil_or_non_biobased_product=self._find_fossil_or_non_biobased(text),
-            gwp100=Gwp100Values(
-                with_biogenic_carbon=self._find_gwp_value(
-                    lines,
-                    ["with biogenic", "including biogenic", "incl. biogenic"],
+            minimum_requirements=MinimumRequirements(
+                gwp100=PcfValueRequirementCheck(
+                    fulfilled=True,
+                    result=PcfValueResult(value=gwp100, unit=gwp100_unit),
+                    evidence=None,
+                    reason="",
                 ),
-                without_biogenic_carbon=self._find_gwp_value(
-                    lines,
-                    ["without biogenic", "excluding biogenic", "excl. biogenic"],
+                gwp100_biogenic=PcfValueRequirementCheck(
+                    fulfilled=gwp100_biogenic is not None,
+                    result=(
+                        PcfValueResult(value=gwp100_biogenic, unit=gwp100_unit)
+                        if gwp100_biogenic is not None
+                        else None
+                    ),
+                    evidence=None,
+                    reason="",
                 ),
-                unit=self._find_unit(lines),
+                system_boundary=TextRequirementCheck(
+                    fulfilled=False,
+                    result=self._find_first_term(text, self._SYSTEM_BOUNDARIES, normalize=True),
+                    evidence=None,
+                    reason="",
+                ),
+                accepted_standard=StandardsRequirementCheck(
+                    fulfilled=False,
+                    result=standards,
+                    evidence=None,
+                    reason="",
+                ),
+                production_location=TextRequirementCheck(
+                    fulfilled=False,
+                    result=self._find_labeled_value(
+                        lines,
+                        ["product location", "production location", "country/region", "country"],
+                    ),
+                    evidence=None,
+                    reason="",
+                ),
+                reference_year=YearRequirementCheck(
+                    fulfilled=False,
+                    result=self._find_reference_year(lines),
+                    evidence=None,
+                    reason="",
+                ),
+                impact_assessment_method=TextRequirementCheck(
+                    fulfilled=False,
+                    result=self._find_first_term(text, self._IMPACT_METHODS),
+                    evidence=None,
+                    reason="",
+                ),
+                secondary_databases=SecondaryDatabasesRequirementCheck(
+                    fulfilled=False,
+                    result=secondary_databases,
+                    evidence=None,
+                    reason="",
+                ),
             ),
-            system_boundary=self._find_first_term(text, self._SYSTEM_BOUNDARIES, normalize=True),
-            standards=standards,
-            product_location=self._find_labeled_value(
-                lines,
-                ["product location", "production location", "country/region", "country"],
-            ),
-            reference_year=self._find_reference_year(lines),
-            impact_assessment_method=self._find_first_term(text, self._IMPACT_METHODS),
-            secondary_databases=secondary_databases,
             extraction_notes=[
                 "Extracted with heuristic rules. Review missing or surprising fields before shipping."
             ],
         )
         record.minimum_requirements = assess_minimum_requirements(record)
-        return record
+        return [record]
 
     def _find_labeled_value(self, lines: list[str], labels: list[str]) -> str | None:
         label_pattern = "|".join(re.escape(label) for label in labels)
@@ -114,6 +169,33 @@ class HeuristicPcfExtractor:
             if numbers:
                 return numbers[-1]
         return None
+
+    def _find_primary_gwp_value(self, lines: list[str]) -> float:
+        without_biogenic = self._find_gwp_value(
+            lines,
+            [
+                "without biogenic",
+                "excluding biogenic",
+                "excl. biogenic",
+                "without bio",
+                "excluding bio",
+                "excl. bio",
+            ],
+        )
+        if without_biogenic is not None:
+            return without_biogenic
+
+        for line in lines:
+            line_lower = line.lower()
+            if "gwp" not in line_lower and "global warming potential" not in line_lower:
+                continue
+            if any(term in line_lower for term in ["with biogenic", "including biogenic"]):
+                continue
+            numbers = self._numbers_from_line(line)
+            if numbers:
+                return numbers[-1]
+
+        raise ValueError("Could not extract mandatory GWP 100 value excluding biogenic carbon")
 
     def _find_unit(self, lines: list[str]) -> str | None:
         unit_pattern = re.compile(

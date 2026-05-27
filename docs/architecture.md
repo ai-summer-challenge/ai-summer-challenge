@@ -4,14 +4,15 @@ The application is organized around a single workflow:
 
 1. Read a supplier PDF.
 2. Extract raw text while preserving page boundaries.
-3. Convert that text into a structured `PCFRecord`, preferably with an LLM extractor.
-4. Assess the extracted data against the minimum supplier-documentation requirements.
-5. Validate and review the extracted data.
-6. Export or submit the record to an external API.
+3. Convert that text into one `PCFRecord` per distinct chemical/product, preferably with an LLM extractor.
+4. Store required extracted values under `minimum_requirements.<field>.result`.
+5. Assess each extracted record against the minimum supplier-documentation requirements.
+6. Validate and review the extracted data.
+7. Export one JSON file per chemical/product, or submit reviewed records to an external API.
 
 ## Layers
 
-- `domain`: stable business objects such as `PCFRecord`, `Gwp100Values`, and `SecondaryDatabase`.
+- `domain`: stable business objects such as `PCFRecord`, `MinimumRequirements`, and `SecondaryDatabase`.
 - `domain/minimum_requirements.py`: deterministic assessment of the minimum requirements.
 - `application`: use cases that coordinate domain objects and adapters.
 - `extraction`: extraction strategies. The default implementation is LLM-backed; a heuristic extractor remains available as a fallback.
