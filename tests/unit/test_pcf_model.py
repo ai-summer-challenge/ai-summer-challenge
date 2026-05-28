@@ -7,7 +7,6 @@ from pcf_pdf_extractor.domain import (
     PCFRecord,
     PcfValueRequirementCheck,
     PcfValueResult,
-    SecondaryDatabasesRequirementCheck,
     StandardsRequirementCheck,
     TextRequirementCheck,
     YearRequirementCheck,
@@ -58,9 +57,9 @@ def _minimum_requirements(reference_year: int | None = None) -> MinimumRequireme
             evidence=None,
             reason="",
         ),
-        secondary_databases=SecondaryDatabasesRequirementCheck(
+        secondary_databases=BooleanRequirementCheck(
             fulfilled=False,
-            result=[],
+            result=False,
             evidence=None,
             reason="",
         ),

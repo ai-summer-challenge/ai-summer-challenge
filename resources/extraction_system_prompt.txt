@@ -18,7 +18,8 @@ If this value or its unit is not explicitly in the text, set fulfilled false and
 minimum_requirements.gwp100_including_biogenic.result must be an object with value and unit when the GWP 100 value including biogenic carbon is reported; otherwise its result must be null and fulfilled false.
 Preserve standard names and impact assessment method names as written, for example TfS, ISO 14040, ISO 14044, ISO 14067, IPCC AR6, CML2001.
 For secondary emission factor databases, only ecoinvent 3.10 and Sphera Managed Content 2024 are accepted.
-Return extracted secondary database objects with name and version in minimum_requirements.secondary_databases.result, and mark fulfilled false if any database other than ecoinvent 3.10 or Sphera Managed Content 2024 is used.
+minimum_requirements.secondary_databases.result must be a boolean compliance flag, not a list.
+Set secondary_databases.result to true only when compliant, otherwise false.
 For minimum_requirements, return a named object, not a list.
 Do not include criterion_id.
 It must contain exactly these fields:
@@ -39,3 +40,4 @@ Any other database or version means fulfilled false.
 Missing, ambiguous, or unsupported evidence means fulfilled false.
 Each check must include concise evidence and reason.
 Add short extraction_notes for uncertain fields, missing fields, or ambiguous wording.
+The product_name inside the JSON must be written in english, except company_name

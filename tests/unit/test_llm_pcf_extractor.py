@@ -76,7 +76,7 @@ def test_llm_extractor_validates_json_payload() -> None:
                         },
                         "secondary_databases": {
                             "fulfilled": True,
-                            "result": [{"name": "ecoinvent", "version": "3.9"}],
+                            "result": True,
                             "evidence": "Secondary database: ecoinvent 3.9",
                             "reason": "Database and version found.",
                         },
@@ -98,7 +98,7 @@ def test_llm_extractor_validates_json_payload() -> None:
     assert record.minimum_requirements.gwp100_including_biogenic.fulfilled is True
     assert record.minimum_requirements.gwp100_including_biogenic.result is not None
     assert record.minimum_requirements.gwp100_including_biogenic.result.value == 1.23
-    assert record.minimum_requirements.secondary_databases.result[0].version == "3.9"
+    assert record.minimum_requirements.secondary_databases.result is True
     assert "Extracted with an LLM. Human review is required before shipping." in record.extraction_notes
     assert client.response_schema is not None
 

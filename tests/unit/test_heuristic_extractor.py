@@ -34,7 +34,6 @@ def test_heuristic_extractor_finds_common_pcf_fields() -> None:
     assert record.minimum_requirements.production_location.result == "France"
     assert record.minimum_requirements.reference_year.result == 2024
     assert record.minimum_requirements.impact_assessment_method.result == "IPCC AR6"
-    assert record.minimum_requirements.secondary_databases.result[0].name == "ecoinvent"
-    assert record.minimum_requirements.secondary_databases.result[0].version == "3.10"
+    assert record.minimum_requirements.secondary_databases.result is True
     assert record.minimum_requirements.oil_and_gas_update.fulfilled is True
     assert all(check["fulfilled"] for check in record.minimum_requirements.model_dump().values())
