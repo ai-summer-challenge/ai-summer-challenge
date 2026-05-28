@@ -27,10 +27,9 @@ Accept the same PCF/GWP units for including-biogenic values, including kg CO2e, 
 Accept "carbon intensity" or a very close equivalent for the including-biogenic GWP criterion under the same narrow conditions: it must clearly be a product/process greenhouse gas emissions intensity or climate impact value with a numeric value and compatible unit.
 Do not assign an unstated-biogenic GWP/PCF value to gwp100_including_biogenic; this criterion is fulfilled true only when the text explicitly says the value includes biogenic carbon or gives an equivalent clear statement.
 Preserve standard names and impact assessment method names as written, for example TfS, ISO 14040, ISO 14044, ISO 14067, IPCC AR6, CML2001.
-For secondary emission factor databases, documents with no secondary factor database provided fulfill the requirement.
-If a secondary factor database is provided, only ecoinvent version 3.10 or newer and Sphera Managed Content version 2024 or newer are accepted.
-Return extracted secondary database objects with name and version in minimum_requirements.secondary_databases.result.
-Mark fulfilled false only when a provided secondary factor database has a missing version, an older-than-required version, or does not match the accepted database criteria.
+For secondary emission factor databases, only ecoinvent 3.10 and Sphera Managed Content 2024 are accepted.
+minimum_requirements.secondary_databases.result must be a boolean compliance flag, not a list.
+Set secondary_databases.result to true only when compliant, otherwise false.
 For minimum_requirements, return a named object, not a list.
 Do not include criterion_id.
 It must contain exactly these fields:
@@ -56,3 +55,4 @@ If a secondary factor database is provided with a missing version, an older-than
 Missing, ambiguous, or unsupported evidence means fulfilled false.
 Each check must include concise evidence and reason.
 Add short extraction_notes for uncertain fields, missing fields, or ambiguous wording.
+The product_name inside the JSON must be written in english, except company_name

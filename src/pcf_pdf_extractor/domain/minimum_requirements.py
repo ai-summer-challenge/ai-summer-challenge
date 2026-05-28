@@ -6,8 +6,6 @@ from pcf_pdf_extractor.domain.pcf import (
     PCFRecord,
     PcfValueRequirementCheck,
     PcfValueResult,
-    SecondaryDatabase,
-    SecondaryDatabasesRequirementCheck,
     StandardsRequirementCheck,
     TextRequirementCheck,
     YearRequirementCheck,
@@ -153,9 +151,13 @@ def _secondary_databases_check(
     database_evidence = _format_databases(check.result)
     return SecondaryDatabasesRequirementCheck(
         fulfilled=fulfilled,
-        result=check.result,
-        evidence=check.evidence or database_evidence or None,
-        reason=reason,
+        result=fulfilled,
+        evidence=check.evidence,
+        reason=(
+            "Secondary databases are compliant."
+            if fulfilled
+            else "Secondary databases are not compliant."
+        ),
     )
 
 
@@ -211,10 +213,6 @@ def _pcf_value_evidence(result: PcfValueResult | None) -> str | None:
     if result is None:
         return None
     return f"{result.value} {result.unit}"
-
-
-def _format_databases(databases: list[SecondaryDatabase]) -> str:
-    return ", ".join(f"{database.name} {database.version}".strip() for database in databases)
 
 
 def _format_optional(label: str, value: object) -> str | None:

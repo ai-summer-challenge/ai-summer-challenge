@@ -8,8 +8,6 @@ from pcf_pdf_extractor.domain import (
     MinimumRequirements,
     PCFRecord,
     PcfValueRequirementCheck,
-    SecondaryDatabase,
-    SecondaryDatabasesRequirementCheck,
     StandardsRequirementCheck,
     TextRequirementCheck,
     YearRequirementCheck,
@@ -65,7 +63,7 @@ def test_reference_data_enricher_adds_expected_gwp_and_oil_gas_flag(
         product_name="Natronlauge 50%",
         minimum_requirements=_minimum_requirements(
             production_location="Europe",
-            secondary_databases=[SecondaryDatabase(name="ecoinvent", version="3.10")],
+            secondary_databases=True,
         ),
     )
 
@@ -79,11 +77,15 @@ def test_reference_data_enricher_adds_expected_gwp_and_oil_gas_flag(
     enriched = enricher.enrich(record)
 
     assert enriched.expected_gwp100_value is not None
-    assert enriched.expected_gwp100_value.value == 0.62
-    assert enriched.expected_gwp100_value.unit == "kg CO2 eq/kg"
-    assert enriched.expected_gwp100_reason is not None
-    assert enriched.oil_gas_relevant is True
-    assert enriched.oil_gas_relevant_reason is not None
+    assert enriched.expected_gwp100_value.fulfilled is True
+    assert enriched.expected_gwp100_value.result is not None
+    assert enriched.expected_gwp100_value.result.value == 0.62
+    assert enriched.expected_gwp100_value.result.unit == "kg CO2 eq/kg"
+    assert enriched.expected_gwp100_value.reason
+    assert enriched.oil_gas_relevant is not None
+    assert enriched.oil_gas_relevant.fulfilled is True
+    assert enriched.oil_gas_relevant.result is True
+    assert enriched.oil_gas_relevant.reason
     assert enriched.is_benchmarch_ok is False
     assert enriched.oil_and_gas_check_ok is True
     assert client.user_prompt is not None
@@ -138,7 +140,7 @@ def _write_bafu_workbook(tmp_path: Path) -> Path:
 
 def _minimum_requirements(
     production_location: str | None = None,
-    secondary_databases: list[SecondaryDatabase] | None = None,
+    secondary_databases: bool | None = None,
 ) -> MinimumRequirements:
     return MinimumRequirements(
         gwp100_excluding_biogenic=PcfValueRequirementCheck(
@@ -183,9 +185,9 @@ def _minimum_requirements(
             evidence=None,
             reason="",
         ),
-        secondary_databases=SecondaryDatabasesRequirementCheck(
-            fulfilled=False,
-            result=secondary_databases or [],
+        secondary_databases=BooleanRequirementCheck(
+            fulfilled=secondary_databases is True,
+            result=secondary_databases,
             evidence=None,
             reason="",
         ),
