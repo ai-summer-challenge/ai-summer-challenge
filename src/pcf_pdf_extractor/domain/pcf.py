@@ -7,9 +7,8 @@ class PcfValueResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     value: float
-    unit: str | None = Field(
-        default=None,
-        description="Unit attached to the PCF value, for example kg CO2e/kg product.",
+    unit: str = Field(
+        description="Unit attached to the PCF value, for example kg CO2e/kg product."
     )
 
 
@@ -64,36 +63,28 @@ class StandardsRequirementCheck(BaseRequirementCheck):
     result: list[str] = Field(default_factory=list)
 
 
-class SecondaryDatabasesRequirementCheck(BaseRequirementCheck):
-    result: list[SecondaryDatabase] = Field(default_factory=list)
-
-
 class MinimumRequirements(BaseModel):
     """Named checklist of minimum supplier-documentation requirements."""
 
     model_config = ConfigDict(extra="forbid")
 
-    gwp100: PcfValueRequirementCheck = Field(
+    gwp100_excluding_biogenic: PcfValueRequirementCheck = Field(
         description="Mandatory GWP 100 value excluding biogenic carbon."
     )
-    gwp100_biogenic: PcfValueRequirementCheck = Field(
-        description=(
-            "GWP 100 value including biogenic carbon, unless the fossil/non-biobased exception "
-            "is supported."
-        )
+    gwp100_including_biogenic: PcfValueRequirementCheck = Field(
+        description="GWP 100 value including biogenic carbon, when reported."
     )
     system_boundary: TextRequirementCheck
     accepted_standard: StandardsRequirementCheck
     production_location: TextRequirementCheck
     reference_year: YearRequirementCheck
     impact_assessment_method: TextRequirementCheck
-    secondary_databases: SecondaryDatabasesRequirementCheck
+    secondary_databases: BooleanRequirementCheck
     oil_and_gas_update: BooleanRequirementCheck
-    approved_secondary_database: SecondaryDatabasesRequirementCheck
 
 
 class PCFRecord(BaseModel):
-    """Structured data expected from a supplier PCF PDF."""
+    """Structured data expected from a supplier PCF source document."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -102,15 +93,23 @@ class PCFRecord(BaseModel):
 
     company_name: str | None = None
     product_name: str | None = None
-    biogenic_carbon_content: str | None = Field(
+    expected_gwp100_value: PcfValueRequirementCheck | None = Field(
         default=None,
-        description="Reported biogenic carbon content, for example 0%, when available.",
+        description="Reference GWP 100 value from the BAFU mapping, when available.",
     )
-    is_fossil_or_non_biobased_product: bool | None = Field(
+    oil_gas_relevant: BooleanRequirementCheck | None = Field(
+        default=None,
+        description="Whether the product is relevant according to the Eclasses Oil & Gas list.",
+    )
+    is_benchmarch_ok: bool | None = Field(
+        default=None,
+        description="True when expected_gwp100_value is within 30% of extracted gwp100_excluding_biogenic.",
+    )
+    oil_and_gas_check_ok: bool | None = Field(
         default=None,
         description=(
-            "Whether the document indicates the product is fossil or not biobased. "
-            "This supports the one-PCF-value exception."
+            "True when oil_gas_relevant is true and either oil_and_gas_update.result is true "
+            "or secondary_databases.result is non-empty."
         ),
     )
     minimum_requirements: MinimumRequirements

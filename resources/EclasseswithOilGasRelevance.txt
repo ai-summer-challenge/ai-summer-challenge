@@ -1,0 +1,186 @@
+1,2-Ethandiol (MEG)
+1,2-Pentandiol
+1,2-Propandiol
+1,3-dimethyl-2-imidazolidinon
+1,3-divinyl tetramethyl disiloxane
+1,5 Pentandiol
+1,6-Hexandiol
+1-Butanol
+1-Butylamin
+2-(2-Aminoethoxy)ethanol
+2,2',4,4',6-Pentabromdiphenylether
+2-Ethyl-1-hexanol
+2-Ethyl-Hexansäure
+2-Ethylhexylacrylat
+2-Hydroxyethyl-Ethylenharnstoff
+3,3,4,4-Benzophenontetracarbonsäuredianh
+3-Butoxy-2-propanol
+4,4-Diaminodicyclohexylmethan
+Aceton
+Acetophenon
+Acrylnitril
+Acrylsäure
+Adipinsäure
+aliphatische Lösemittel
+Allylalkohol
+Allylchlorid
+Allylglycidylether
+Amidenwachs
+Amine
+Aminoethylethanolamin
+Aminoethylpiperazin
+Ammoniak
+Ammoniumhydroxid
+Ammoniumphosphat
+Ammoniumsulfat
+Antioxidantien mehrere Produkte
+aromatische Lösemittel
+Basisöle
+Benzylalkohol
+Benzylamin
+Butadien
+Butandiol
+Butylbenzolsulfonamid
+Butylglykol
+Caprolactam
+Caprolacton
+Crack C 4
+Cyclische Siloxane (Gemisch D4, D5)
+Cyclohexan
+Cyclohexandimethanol
+Cyclohexanon
+Diethanolamin
+Diethylaminopropylamin
+Diethylenglykol (DEG)
+Diethylentriamin
+Diisononyladipat
+Di-Isopropanolamin
+Diisopropylether
+Dimersäure
+Dimethylamin
+Dimethylaminopropylamin
+Dimethylformamid
+Dimethylterephthalat
+Dipropylenglykol (DPG)
+Dodecylbenzolsulfonsäure
+Entschäumer
+Epoxidharze
+Essigsäure
+Essigsäureanhydrid
+Ethylacrylat
+Ethylen
+Ethylendiamin
+Ethylenglykolmonobutylether/ Ethylenglyk
+Ethylenoxid
+Ethylen-propylen-copolymer
+FCC C4
+Flammschutz
+Formaldehyd
+Harnstoff
+Heizöl
+Hexamethylendiamin
+Hexan
+Hexylenglykol
+Hydrazin
+Hydrochinon
+Hydrochinon‑monomethylether
+Hydroxyethylmethacrylat
+Hydroxypropylmethacrylat
+Imidazol
+Isobutyraldehyd
+Isobutyraldehyd Pharma
+Isophthalsäure
+Isopropanol
+Isopropylamin
+Isopropylcyclohexan
+Lineare Siloxane
+Methacrylnitril
+Methacrylsäure
+Methan
+Methanol
+Methanthiol
+Methionin
+Methoxypropanol
+Methoxytriglykol
+Methylacetat
+Methylacrylat
+Methylcarbonat
+Methylchlorid
+Methyl-di-Ethanolamin
+Methyldiglykol
+Methylendianilin
+Methylglykol
+Methylimidazol
+Methylisobutylketon
+Methylmethacrylat
+Methyl-t-butylether
+Methyltrichlorsilan
+Methyltrichlorsilan
+Monochloressigsäure
+Monoethanolamin
+m-Xylylendiamin
+N,N-Dimethylcyclohexylamin
+N,N-Dimethylethanolamin
+Na Benzolsulfonsäure
+Natriumbenzoat
+n-Butylmethacrylat
+Neopentylglykol
+N-Methylpyrrolidon
+N-Vinylpyrrolidon
+Octamethylcyclotetrasiloxan (D4 = 4 Di-M
+Pentaerythritester
+Pentaethylenhexamin
+Phenol
+Phthalsäureanhydrid
+Phthalsäureester
+Polyether
+Polyetherdiamin
+Polyetherpolyol
+Polyethylenglykol
+Polyolefinwachs
+Polypropylenglykol
+Polytetrahydrofuran
+Polyvinylalkohol
+Propen
+Propylacetat
+Propylenoxid
+Raffinat 1
+Raffinat 2
+Salpetersäure
+Silikon-Öl
+Styrol
+Synthetischer Fettalkohol C12-15
+Tetrachlorsilan
+Tetraethylenpentamin
+Tetrahydrofuran
+Toluol
+Trichlorsilan
+Tricyclodecandimethanol
+Triethanolamin
+Triethylendiamin
+Triethylentetramin
+Trimellithsäureanhydrid
+Trimethylchlorsilan
+Trimethylolpropan
+Trimethylolpropan-mono-allylether
+Trimethylolpropantriacrylat
+Triphenylphosphin
+Vinyltrichlorsilan
+Vinyltriethoxysilan
+Xylol
+Aluminiumsulfat
+Dextrose
+Ethanol
+Ethanol Pharma
+Ethylacetat
+Isobutanol
+Isostearinsäure
+Kokosöl
+Palmkernöl
+Palmöl
+Phosphorsäure
+Rapsfettsäure
+Schwefel
+Schwefelsäure
+Silizium Metall
+Threonin

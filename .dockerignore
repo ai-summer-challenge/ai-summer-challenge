@@ -1,0 +1,12 @@
+.git
+.pytest_cache
+.ruff_cache
+.venv
+__pycache__
+*.pyc
+.env
+data/incoming/*
+data/processed/*
+streamlit.err.log
+streamlit.out.log
+

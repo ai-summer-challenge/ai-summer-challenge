@@ -1,32 +1,16 @@
-from dataclasses import dataclass
-from hashlib import sha256
 from pathlib import Path
 
-from pypdf import PdfReader
+from pcf_pdf_extractor.infrastructure.source import PdfSourceReader, SourceDocument
 
 
-@dataclass(frozen=True)
-class PdfDocument:
-    path: Path
-    text: str
-    text_sha256: str
+PdfDocument = SourceDocument
 
 
 class PdfTextReader:
-    """Extract text from a PDF while preserving coarse page boundaries."""
+    """Backward-compatible wrapper around the generic PDF source reader."""
+
+    def __init__(self) -> None:
+        self._reader = PdfSourceReader()
 
     def read(self, pdf_path: Path) -> PdfDocument:
-        path = pdf_path.expanduser().resolve()
-        if not path.exists():
-            raise FileNotFoundError(path)
-        if path.suffix.lower() != ".pdf":
-            raise ValueError(f"Expected a PDF file, got: {path}")
-
-        reader = PdfReader(str(path))
-        pages: list[str] = []
-        for index, page in enumerate(reader.pages, start=1):
-            page_text = page.extract_text() or ""
-            pages.append(f"\n\n--- page {index} ---\n{page_text.strip()}")
-
-        text = "\n".join(pages).strip()
-        return PdfDocument(path=path, text=text, text_sha256=sha256(text.encode()).hexdigest())
+        return self._reader.read(pdf_path)

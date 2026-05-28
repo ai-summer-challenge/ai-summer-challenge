@@ -66,9 +66,22 @@ class ChatCompletionsLlmClient:
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
         }
-        with httpx.Client(timeout=self._timeout_seconds) as client:
-            response = client.post(f"{self._base_url}/chat/completions", json=payload, headers=headers)
-            self._raise_for_status(response)
+        try:
+            with httpx.Client(timeout=self._timeout_seconds, trust_env=True) as client:
+                response = client.post(
+                    f"{self._base_url}/chat/completions",
+                    json=payload,
+                    headers=headers,
+                )
+                self._raise_for_status(response)
+        except httpx.RequestError as exc:
+            message = f"LLM API network request failed: {exc}"
+            if "WinError 10013" in str(exc):
+                message += (
+                    " (socket access denied; check firewall, endpoint allowlist, "
+                    "or proxy settings for api.openai.com:443)"
+                )
+            raise RuntimeError(message) from exc
 
         response_payload = response.json()
         content = response_payload["choices"][0]["message"]["content"]

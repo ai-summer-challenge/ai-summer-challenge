@@ -4,8 +4,6 @@ from pcf_pdf_extractor.domain import (
     PCFRecord,
     PcfValueRequirementCheck,
     PcfValueResult,
-    SecondaryDatabase,
-    SecondaryDatabasesRequirementCheck,
     StandardsRequirementCheck,
     TextRequirementCheck,
     YearRequirementCheck,
@@ -15,26 +13,26 @@ from pcf_pdf_extractor.domain.minimum_requirements import assess_minimum_require
 
 def _requirements(
     *,
-    gwp100: PcfValueResult | None = None,
-    gwp100_biogenic: PcfValueResult | None = None,
+    gwp100_excluding_biogenic: PcfValueResult | None = None,
+    gwp100_including_biogenic: PcfValueResult | None = None,
     system_boundary: str | None = None,
     standards: list[str] | None = None,
     production_location: str | None = None,
     reference_year: int | None = None,
     impact_assessment_method: str | None = None,
-    secondary_databases: list[SecondaryDatabase] | None = None,
-    oil_and_gas_update: bool = False,
+    secondary_databases: bool | None = None,
+    oil_and_gas_update: bool | None = None,
 ) -> MinimumRequirements:
     return MinimumRequirements(
-        gwp100=PcfValueRequirementCheck(
+        gwp100_excluding_biogenic=PcfValueRequirementCheck(
             fulfilled=False,
-            result=gwp100,
+            result=gwp100_excluding_biogenic,
             evidence=None,
             reason="",
         ),
-        gwp100_biogenic=PcfValueRequirementCheck(
+        gwp100_including_biogenic=PcfValueRequirementCheck(
             fulfilled=False,
-            result=gwp100_biogenic,
+            result=gwp100_including_biogenic,
             evidence=None,
             reason="",
         ),
@@ -68,21 +66,15 @@ def _requirements(
             evidence=None,
             reason="",
         ),
-        secondary_databases=SecondaryDatabasesRequirementCheck(
-            fulfilled=False,
-            result=secondary_databases or [],
+        secondary_databases=BooleanRequirementCheck(
+            fulfilled=secondary_databases is True,
+            result=secondary_databases,
             evidence=None,
             reason="",
         ),
         oil_and_gas_update=BooleanRequirementCheck(
-            fulfilled=False,
+            fulfilled=oil_and_gas_update is True,
             result=oil_and_gas_update,
-            evidence=None,
-            reason="",
-        ),
-        approved_secondary_database=SecondaryDatabasesRequirementCheck(
-            fulfilled=False,
-            result=[],
             evidence=None,
             reason="",
         ),
@@ -96,14 +88,20 @@ def _assessed(record: PCFRecord):
 def test_assessment_fulfills_all_requirements_with_two_pcf_values() -> None:
     record = PCFRecord(
         minimum_requirements=_requirements(
-            gwp100=PcfValueResult(value=1.45, unit="kg CO2e/kg product"),
-            gwp100_biogenic=PcfValueResult(value=1.23, unit="kg CO2e/kg product"),
+            gwp100_excluding_biogenic=PcfValueResult(
+                value=1.45,
+                unit="kg CO2e/kg product",
+            ),
+            gwp100_including_biogenic=PcfValueResult(
+                value=1.23,
+                unit="kg CO2e/kg product",
+            ),
             system_boundary="cradle-to-gate",
             standards=["ISO 14040", "ISO 14044"],
             production_location="France",
             reference_year=2024,
             impact_assessment_method="IPCC AR6",
-            secondary_databases=[SecondaryDatabase(name="ecoinvent", version="3.10")],
+            secondary_databases=True,
             oil_and_gas_update=True,
         ),
     )
@@ -113,26 +111,31 @@ def test_assessment_fulfills_all_requirements_with_two_pcf_values() -> None:
     assert all(check["fulfilled"] for check in checks.model_dump().values())
 
 
-def test_assessment_accepts_one_pcf_value_for_fossil_exception() -> None:
+def test_assessment_requires_including_biogenic_value_when_absent() -> None:
     record = PCFRecord(
-        biogenic_carbon_content="0%",
         minimum_requirements=_requirements(
-            gwp100=PcfValueResult(value=1.45, unit="kg CO2e/kg product"),
+            gwp100_excluding_biogenic=PcfValueResult(
+                value=1.45,
+                unit="kg CO2e/kg product",
+            ),
         ),
     )
 
     checks = _assessed(record)
 
-    assert checks.gwp100.fulfilled is True
-    assert checks.gwp100_biogenic.fulfilled is True
+    assert checks.gwp100_excluding_biogenic.fulfilled is True
+    assert checks.gwp100_including_biogenic.fulfilled is False
 
 
 def test_assessment_rejects_unaccepted_standard_and_missing_database_version() -> None:
     record = PCFRecord(
         minimum_requirements=_requirements(
-            gwp100=PcfValueResult(value=1.45, unit="kg CO2e/kg product"),
+            gwp100_excluding_biogenic=PcfValueResult(
+                value=1.45,
+                unit="kg CO2e/kg product",
+            ),
             standards=["GHG Protocol"],
-            secondary_databases=[SecondaryDatabase(name="ecoinvent")],
+            secondary_databases=False,
         ),
     )
 
@@ -145,29 +148,46 @@ def test_assessment_rejects_unaccepted_standard_and_missing_database_version() -
 def test_assessment_accepts_sphera_managed_content_2024() -> None:
     record = PCFRecord(
         minimum_requirements=_requirements(
-            gwp100=PcfValueResult(value=1.45, unit="kg CO2e/kg product"),
-            secondary_databases=[
-                SecondaryDatabase(name="Sphera Managed Content", version="2024")
-            ],
+            gwp100_excluding_biogenic=PcfValueResult(
+                value=1.45,
+                unit="kg CO2e/kg product",
+            ),
+            secondary_databases=True,
         ),
     )
 
     checks = _assessed(record)
 
-    assert checks.approved_secondary_database.fulfilled is True
-    assert checks.approved_secondary_database.result[0].name == "Sphera Managed Content"
     assert checks.secondary_databases.fulfilled is True
 
 
-def test_secondary_database_requirement_rejects_other_versions_even_when_database_is_known() -> None:
+def test_secondary_database_requirement_false_when_not_compliant() -> None:
     record = PCFRecord(
         minimum_requirements=_requirements(
-            gwp100=PcfValueResult(value=1.45, unit="kg CO2e/kg product"),
-            secondary_databases=[SecondaryDatabase(name="ecoinvent", version="3.9")],
+            gwp100_excluding_biogenic=PcfValueResult(
+                value=1.45,
+                unit="kg CO2e/kg product",
+            ),
+            secondary_databases=False,
         ),
     )
 
     checks = _assessed(record)
 
     assert checks.secondary_databases.fulfilled is False
-    assert checks.approved_secondary_database.fulfilled is False
+
+
+def test_secondary_database_requirement_true_when_compliant() -> None:
+    record = PCFRecord(
+        minimum_requirements=_requirements(
+            gwp100_excluding_biogenic=PcfValueResult(
+                value=1.45,
+                unit="kg CO2e/kg product",
+            ),
+            secondary_databases=True,
+        ),
+    )
+
+    checks = _assessed(record)
+
+    assert checks.secondary_databases.fulfilled is True

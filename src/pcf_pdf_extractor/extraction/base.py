@@ -7,4 +7,4 @@ class PcfExtractor(Protocol):
     """Common interface for PCF extraction strategies."""
 
     def extract(self, text: str) -> list[PCFRecord]:
-        """Extract one PCF record per distinct chemical/product from PDF text."""
+        """Extract one PCF record per distinct chemical/product from normalized source text."""

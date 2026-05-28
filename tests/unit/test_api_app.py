@@ -1,19 +1,19 @@
-import pytest
-from pydantic import ValidationError
+from fastapi.testclient import TestClient
 
+from pcf_pdf_extractor.api.app import app
 from pcf_pdf_extractor.domain import (
     BooleanRequirementCheck,
     MinimumRequirements,
-    PCFRecord,
     PcfValueRequirementCheck,
     PcfValueResult,
+    SecondaryDatabasesRequirementCheck,
     StandardsRequirementCheck,
     TextRequirementCheck,
     YearRequirementCheck,
 )
 
 
-def _minimum_requirements(reference_year: int | None = None) -> MinimumRequirements:
+def _minimum_requirements() -> MinimumRequirements:
     return MinimumRequirements(
         gwp100_excluding_biogenic=PcfValueRequirementCheck(
             fulfilled=True,
@@ -22,10 +22,10 @@ def _minimum_requirements(reference_year: int | None = None) -> MinimumRequireme
             reason="Value found.",
         ),
         gwp100_including_biogenic=PcfValueRequirementCheck(
-            fulfilled=False,
-            result=None,
+            fulfilled=True,
+            result=PcfValueResult(value=1.23, unit="kg CO2e/kg product"),
             evidence=None,
-            reason="Value not found.",
+            reason="Value found.",
         ),
         system_boundary=TextRequirementCheck(
             fulfilled=False,
@@ -46,8 +46,8 @@ def _minimum_requirements(reference_year: int | None = None) -> MinimumRequireme
             reason="",
         ),
         reference_year=YearRequirementCheck(
-            fulfilled=reference_year is not None,
-            result=reference_year,
+            fulfilled=False,
+            result=None,
             evidence=None,
             reason="",
         ),
@@ -57,32 +57,39 @@ def _minimum_requirements(reference_year: int | None = None) -> MinimumRequireme
             evidence=None,
             reason="",
         ),
-        secondary_databases=BooleanRequirementCheck(
+        secondary_databases=SecondaryDatabasesRequirementCheck(
             fulfilled=False,
-            result=False,
+            result=[],
             evidence=None,
             reason="",
         ),
         oil_and_gas_update=BooleanRequirementCheck(
-            fulfilled=False,
-            result=False,
+            fulfilled=True,
+            result=True,
             evidence=None,
             reason="",
         ),
     )
 
 
-def test_reference_year_accepts_recent_year() -> None:
-    record = PCFRecord(minimum_requirements=_minimum_requirements(reference_year=2024))
+def test_health_returns_ok() -> None:
+    client = TestClient(app)
 
-    assert record.minimum_requirements.reference_year.result == 2024
+    response = client.get("/health")
 
-
-def test_reference_year_rejects_unreasonable_year() -> None:
-    with pytest.raises(ValidationError):
-        PCFRecord(minimum_requirements=_minimum_requirements(reference_year=1800))
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
 
 
-def test_minimum_requirements_are_required() -> None:
-    with pytest.raises(ValidationError):
-        PCFRecord()
+def test_assess_record_refreshes_minimum_requirements() -> None:
+    client = TestClient(app)
+    payload = {
+        "minimum_requirements": _minimum_requirements().model_dump(mode="json"),
+    }
+
+    response = client.post("/api/records/assess", json=payload)
+
+    assert response.status_code == 200
+    assert (
+        response.json()["minimum_requirements"]["gwp100_including_biogenic"]["fulfilled"] is True
+    )

@@ -1,35 +1,55 @@
 # PCF PDF Extractor
 
-Python application scaffold for extracting Product Carbon Footprint information from supplier PDFs and preparing it for later API submission.
+Python application scaffold for extracting Product Carbon Footprint information from supplier documents and preparing it for later API submission.
 
 The target fields are:
 
+- source file
+- raw text SHA-256
 - company name
 - product name
-- biogenic carbon content and fossil/non-biobased indication when relevant
+- expected GWP 100 value from the BAFU reference data, when mapped
+- Oil & Gas relevance from the Eclasses reference file, when mapped
 - named minimum requirement checks with `fulfilled`, `result`, `evidence`, and `reason`
+- extraction notes
 
 The minimum requirement checks are the source of truth for extracted requirement values. For example:
 
 ```json
 {
+  "source_file": "data/incoming/example.pdf",
+  "raw_text_sha256": "abc123...",
+  "company_name": "Example Chemicals",
+  "product_name": "Solvent X",
+  "expected_gwp100_value": {
+    "value": 1.75,
+    "unit": "kg CO2 eq/kg"
+  },
+  "oil_gas_relevant": true,
   "minimum_requirements": {
-    "gwp100": {
+    "gwp100_excluding_biogenic": {
       "fulfilled": true,
       "result": {
         "value": 1.45,
         "unit": "kg CO2e/kg product"
       },
       "evidence": "PCF GWP 100 without biogenic carbon: 1.45 kg CO2e/kg product",
-      "reason": "GWP 100 excluding biogenic carbon was extracted as a numeric value."
+      "reason": "GWP 100 excluding biogenic carbon was extracted with value and unit."
+    },
+    "gwp100_including_biogenic": {
+      "fulfilled": false,
+      "result": null,
+      "evidence": null,
+      "reason": "No GWP 100 including biogenic carbon value with unit was extracted."
     },
     "production_location": {
       "fulfilled": true,
       "result": "US",
       "evidence": "Production location: US",
-      "reason": "Production location found."
+      "reason": "Production location of the product/process found."
     }
-  }
+  },
+  "extraction_notes": []
 }
 ```
 
@@ -42,15 +62,18 @@ The minimum requirement checks are the source of truth for extracted requirement
 │   └── processed/       # Local extracted JSON files
 ├── docs/
 │   └── architecture.md
+├── resources/           # BAFU extract, Eclasses list, and mapping prompt
 ├── src/
 │   └── pcf_pdf_extractor/
 │       ├── application/ # Use cases
 │       ├── domain/      # PCF data model and validation
+│       ├── enrichment/  # BAFU/Eclasses reference-data enrichment
 │       ├── extraction/  # Extraction strategies
 │       └── infrastructure/
 │           ├── api/     # Outbound company API client
 │           ├── llm/     # LLM API client
-│           └── pdf/     # PDF text reader
+│           ├── pdf/     # Backward-compatible PDF reader wrapper
+│           └── source/  # PDF, Excel, and email-body readers
 └── tests/
     └── unit/
 ```
@@ -66,10 +89,25 @@ cp .env.example .env
 
 ## Usage
 
-Extract structured records from a PDF:
+Supported input formats:
+
+- PDF: `.pdf`
+- Excel: `.xlsx`, `.xlsm`, `.xltx`, `.xltm`, `.xls`
+- Email body only: `.eml`, `.msg`, `.mail`
+
+Email attachments are intentionally ignored. If a supplier sends an Excel or PDF attachment, process that attachment as its own input file.
+
+Extract structured records from a source file:
 
 ```bash
 pcf-extract extract data/incoming/example.pdf --output data/processed/example.json
+```
+
+To run extraction and then immediately enrich each JSON with the BAFU expected GWP 100
+value and Eclasses Oil & Gas relevance:
+
+```bash
+pcf-extract extract data/incoming/example.pdf --enrich-reference-data --output data/processed/example.json
 ```
 
 If the PDF contains one chemical/product, this writes one JSON file. If the PDF contains
@@ -93,6 +131,12 @@ You can also pass a directory directly:
 pcf-extract extract data/incoming/multi_product.pdf --output data/processed/multi_product/
 ```
 
+A small script is also available if you want a direct extension-based file-to-JSON entry point:
+
+```bash
+python scripts/extract_source_to_json.py data/incoming/example.xlsx --output data/processed/example.json
+```
+
 LLM extraction is the default. Configure it in `.env` first:
 
 ```bash
@@ -107,10 +151,47 @@ For an offline first pass, use the heuristic extractor:
 pcf-extract extract data/incoming/example.pdf --extractor heuristic --output data/processed/example.json
 ```
 
+Enrich an already extracted JSON:
+
+```bash
+pcf-extract enrich data/processed/example.json --output data/processed/example.enriched.json
+```
+
+The enrichment step uses `resources/prompt_mapping.txt` with candidate BAFU rows from
+`resources/BAFU Extract.xlsx` and the full `resources/EclasseswithOilGasRelevance.txt`
+list. If the BAFU row is ambiguous, `expected_gwp100_value` remains `null` and an
+extraction note is added.
+
 Ship a reviewed record to the configured company API:
 
 ```bash
 pcf-extract ship data/processed/example.json
+```
+
+Run the lightweight Streamlit review UI:
+
+```bash
+.\run.ps1
+```
+
+If you prefer two terminals:
+
+```bash
+pip install -e ".[api,ui]"
+uvicorn pcf_pdf_extractor.api.app:app --reload
+```
+
+In a second shell:
+
+```bash
+$env:BACKEND_API_URL="http://127.0.0.1:8000"
+streamlit run frontend/streamlit_app.py
+```
+
+Or run the separated backend and frontend containers together:
+
+```bash
+docker compose up --build
 ```
 
 The LLM extractor asks for a top-level `records` array and validates each item against the `PCFRecord` domain model before anything is exported or shipped. The heuristic extractor remains useful for tests, debugging, and cases where API access is not available.
@@ -118,12 +199,10 @@ The LLM extractor asks for a top-level `records` array and validates each item a
 Minimum requirement checks are generated for:
 
 - PCF GWP 100 value excluding biogenic carbon
-- PCF GWP 100 including biogenic carbon, unless the fossil/non-biobased exception applies
+- PCF GWP 100 including biogenic carbon when reported
 - system boundary
 - accepted standard
-- production location
-- reference year
+- production location of the product/process, not the report issuer
+- reference year of the production data/data collection, not the report year
 - impact assessment method
 - secondary emission factor databases, limited to `ecoinvent 3.10` or `Sphera Managed Content 2024`
-- whether `oil and gas update` is mentioned
-- whether `ecoinvent 3.10` or `Sphera Managed Content 2024` is used as a secondary database; other secondary databases/versions fail the secondary database requirement
