@@ -165,17 +165,33 @@ def test_assessment_accepts_sphera_managed_content_2024() -> None:
     assert checks.secondary_databases.fulfilled is True
 
 
-def test_secondary_database_requirement_rejects_other_versions_even_when_database_is_known() -> None:
+def test_secondary_database_requirement_accepts_ecoinvent_310_or_above() -> None:
     record = PCFRecord(
         minimum_requirements=_requirements(
             gwp100_excluding_biogenic=PcfValueResult(
                 value=1.45,
                 unit="kg CO2e/kg product",
             ),
-            secondary_databases=[SecondaryDatabase(name="ecoinvent", version="3.9")],
+            secondary_databases=[SecondaryDatabase(name="ecoinvent", version="3.11")],
         ),
     )
 
     checks = _assessed(record)
 
-    assert checks.secondary_databases.fulfilled is False
+    assert checks.secondary_databases.fulfilled is True
+
+
+def test_secondary_database_requirement_accepts_sphera_2024_or_older() -> None:
+    record = PCFRecord(
+        minimum_requirements=_requirements(
+            gwp100_excluding_biogenic=PcfValueResult(
+                value=1.45,
+                unit="kg CO2e/kg product",
+            ),
+            secondary_databases=[SecondaryDatabase(name="Sphera Managed Content", version="2023")],
+        ),
+    )
+
+    checks = _assessed(record)
+
+    assert checks.secondary_databases.fulfilled is True

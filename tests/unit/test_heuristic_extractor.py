@@ -12,6 +12,7 @@ def test_heuristic_extractor_finds_common_pcf_fields() -> None:
     Product location: France
     Reference year of data collection: 2024
     Impact assessment method: IPCC AR6
+    Oil and gas update: applied
     Secondary database: ecoinvent 3.10
     """
 
@@ -43,4 +44,4 @@ def test_heuristic_extractor_finds_common_pcf_fields() -> None:
     assert record.minimum_requirements.reference_year.fulfilled is True
     assert record.minimum_requirements.impact_assessment_method.fulfilled is True
     assert record.minimum_requirements.secondary_databases.fulfilled is True
-    assert record.minimum_requirements.oil_and_gas_update.fulfilled is False
+    assert record.minimum_requirements.oil_and_gas_update.fulfilled is True

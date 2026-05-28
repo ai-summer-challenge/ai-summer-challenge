@@ -188,14 +188,13 @@ def _has_accepted_standard(standards: list[str]) -> bool:
 
 def _is_approved_secondary_database(database: SecondaryDatabase) -> bool:
     name = _normalize_text(database.name)
-    version = _normalize_text(database.version or "")
-    is_ecoinvent_310 = "ecoinvent" in name and version == "3 10"
-    is_sphera_2024 = (
+    is_ecoinvent_310_or_above = "ecoinvent" in name and _version_gte(database.version, 3.10)
+    is_sphera_2024_or_older = (
         "sphera" in name
         and ("managed content" in name or "managedcontent" in name)
-        and version == "2024"
+        and _year_lte(database.version, 2024)
     )
-    return is_ecoinvent_310 or is_sphera_2024
+    return is_ecoinvent_310_or_above or is_sphera_2024_or_older
 
 
 def _normalize_text(value: str) -> str:
@@ -220,3 +219,27 @@ def _format_optional(label: str, value: object) -> str | None:
     if value is None or value == "":
         return None
     return f"{label}: {value}"
+
+
+def _version_gte(version: str | None, threshold: float) -> bool:
+    if not version:
+        return False
+    match = re.search(r"(\d+(?:[.,]\d+)?)", version)
+    if not match:
+        return False
+    try:
+        return float(match.group(1).replace(",", ".")) >= threshold
+    except ValueError:
+        return False
+
+
+def _year_lte(version: str | None, threshold: int) -> bool:
+    if not version:
+        return False
+    match = re.search(r"\b(19\d{2}|20\d{2})\b", version)
+    if not match:
+        return False
+    try:
+        return int(match.group(1)) <= threshold
+    except ValueError:
+        return False

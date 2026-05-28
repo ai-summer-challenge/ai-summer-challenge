@@ -8,6 +8,8 @@ The target fields are:
 - raw text SHA-256
 - company name
 - product name
+- expected GWP 100 value from the BAFU reference data, when mapped
+- Oil & Gas relevance from the Eclasses reference file, when mapped
 - named minimum requirement checks with `fulfilled`, `result`, `evidence`, and `reason`
 - extraction notes
 
@@ -19,6 +21,11 @@ The minimum requirement checks are the source of truth for extracted requirement
   "raw_text_sha256": "abc123...",
   "company_name": "Example Chemicals",
   "product_name": "Solvent X",
+  "expected_gwp100_value": {
+    "value": 1.75,
+    "unit": "kg CO2 eq/kg"
+  },
+  "oil_gas_relevant": true,
   "minimum_requirements": {
     "gwp100_excluding_biogenic": {
       "fulfilled": true,
@@ -55,10 +62,12 @@ The minimum requirement checks are the source of truth for extracted requirement
 │   └── processed/       # Local extracted JSON files
 ├── docs/
 │   └── architecture.md
+├── resources/           # BAFU extract, Eclasses list, and mapping prompt
 ├── src/
 │   └── pcf_pdf_extractor/
 │       ├── application/ # Use cases
 │       ├── domain/      # PCF data model and validation
+│       ├── enrichment/  # BAFU/Eclasses reference-data enrichment
 │       ├── extraction/  # Extraction strategies
 │       └── infrastructure/
 │           ├── api/     # Outbound company API client
@@ -92,6 +101,13 @@ Extract structured records from a source file:
 
 ```bash
 pcf-extract extract data/incoming/example.pdf --output data/processed/example.json
+```
+
+To run extraction and then immediately enrich each JSON with the BAFU expected GWP 100
+value and Eclasses Oil & Gas relevance:
+
+```bash
+pcf-extract extract data/incoming/example.pdf --enrich-reference-data --output data/processed/example.json
 ```
 
 If the PDF contains one chemical/product, this writes one JSON file. If the PDF contains
@@ -134,6 +150,17 @@ For an offline first pass, use the heuristic extractor:
 ```bash
 pcf-extract extract data/incoming/example.pdf --extractor heuristic --output data/processed/example.json
 ```
+
+Enrich an already extracted JSON:
+
+```bash
+pcf-extract enrich data/processed/example.json --output data/processed/example.enriched.json
+```
+
+The enrichment step uses `resources/prompt_mapping.txt` with candidate BAFU rows from
+`resources/BAFU Extract.xlsx` and the full `resources/EclasseswithOilGasRelevance.txt`
+list. If the BAFU row is ambiguous, `expected_gwp100_value` remains `null` and an
+extraction note is added.
 
 Ship a reviewed record to the configured company API:
 
