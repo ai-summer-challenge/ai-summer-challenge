@@ -101,9 +101,17 @@ class PCFRecord(BaseModel):
         default=None,
         description="Reference GWP 100 value from the BAFU mapping, when available.",
     )
+    expected_gwp100_reason: str | None = Field(
+        default=None,
+        description="Reason explaining why expected_gwp100_value was filled or left null.",
+    )
     oil_gas_relevant: bool | None = Field(
         default=None,
         description="Whether the product is relevant according to the Eclasses Oil & Gas list.",
+    )
+    oil_gas_relevant_reason: str | None = Field(
+        default=None,
+        description="Reason explaining how oil_gas_relevant was determined.",
     )
     is_benchmarch_ok: bool | None = Field(
         default=None,

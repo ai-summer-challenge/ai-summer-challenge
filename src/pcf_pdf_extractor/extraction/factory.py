@@ -19,5 +19,7 @@ def build_extractor(kind: ExtractorKind, settings: Settings) -> PcfExtractor:
         return LlmPcfExtractor(
             client=ChatCompletionsLlmClient.from_settings(settings),
             max_input_chars=settings.llm_max_input_chars,
+            system_prompt_path=settings.extraction_system_prompt_path,
+            user_prompt_path=settings.extraction_user_prompt_path,
         )
     raise ValueError(f"Unsupported extractor kind: {kind}")

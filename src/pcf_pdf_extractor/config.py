@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     )
     reference_mapping_prompt_path: Path = Path("resources/prompt_mapping.txt")
     reference_mapping_candidate_limit: int = Field(default=120, gt=0)
+    extraction_system_prompt_path: Path = Path("resources/extraction_system_prompt.txt")
+    extraction_user_prompt_path: Path = Path("resources/extraction_user_prompt.txt")
 
 
 @lru_cache

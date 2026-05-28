@@ -179,9 +179,16 @@ class ReferenceDataEnricher:
 
     def enrich(self, record: PCFRecord) -> PCFRecord:
         if not record.product_name:
+            record.expected_gwp100_value = None
+            record.expected_gwp100_reason = "No product_name was available for BAFU mapping."
+            record.oil_gas_relevant = False
+            record.oil_gas_relevant_reason = (
+                "No product_name was available, so Eclasses relevance was set to false."
+            )
             record.extraction_notes.append(
                 "Reference data enrichment skipped because product_name is missing."
             )
+            self._compute_checks(record)
             return record
 
         production_location = record.minimum_requirements.production_location.result
@@ -197,9 +204,15 @@ class ReferenceDataEnricher:
         )
         mapping = BafuMappingResponse.model_validate(mapping_payload)
         record.oil_gas_relevant = mapping.oil_gas_relevant
+        record.oil_gas_relevant_reason = (
+            "Mapped from Eclasses relevance check in prompt_mapping."
+            if mapping.oil_gas_relevant
+            else "Not found in Eclasses relevance list by mapping step."
+        )
 
         if mapping.clarification_needed:
             record.expected_gwp100_value = None
+            record.expected_gwp100_reason = f"Clarification needed: {mapping.reason}"
             record.extraction_notes.append(
                 f"BAFU mapping requires clarification: {mapping.reason}"
             )
@@ -208,6 +221,7 @@ class ReferenceDataEnricher:
 
         if mapping.bafu_row is False:
             record.expected_gwp100_value = None
+            record.expected_gwp100_reason = "No safe BAFU row match was found."
             record.extraction_notes.append("No safe BAFU expected GWP 100 match was found.")
             self._compute_checks(record)
             return record
@@ -216,6 +230,9 @@ class ReferenceDataEnricher:
         candidate_row_numbers = {candidate.row_number for candidate in candidates}
         if bafu_row is None or bafu_row.row_number not in candidate_row_numbers:
             record.expected_gwp100_value = None
+            record.expected_gwp100_reason = (
+                f"Mapped row {mapping.bafu_row} is not in the candidate set."
+            )
             record.extraction_notes.append(
                 f"BAFU mapping returned unavailable row {mapping.bafu_row}."
             )
@@ -225,6 +242,9 @@ class ReferenceDataEnricher:
         record.expected_gwp100_value = PcfValueResult(
             value=bafu_row.gwp100_value,
             unit=bafu_row.gwp100_unit,
+        )
+        record.expected_gwp100_reason = (
+            f"Mapped to BAFU row {bafu_row.row_number}: {bafu_row.product}."
         )
         self._compute_checks(record)
         return record

@@ -81,7 +81,9 @@ def test_reference_data_enricher_adds_expected_gwp_and_oil_gas_flag(
     assert enriched.expected_gwp100_value is not None
     assert enriched.expected_gwp100_value.value == 0.62
     assert enriched.expected_gwp100_value.unit == "kg CO2 eq/kg"
+    assert enriched.expected_gwp100_reason is not None
     assert enriched.oil_gas_relevant is True
+    assert enriched.oil_gas_relevant_reason is not None
     assert enriched.is_benchmarch_ok is False
     assert enriched.oil_and_gas_check_ok is True
     assert client.user_prompt is not None
