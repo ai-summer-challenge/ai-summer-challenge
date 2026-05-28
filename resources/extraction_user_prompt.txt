@@ -1,22 +1,25 @@
 {truncation_note}
 
-Return one record per chemical/product. Each record must have exactly these top-level fields:
+Return one record per chemical/product discussed in the supplier PCF documentation, including products whose GWP value or other minimum requirement values are missing. Do not drop products because their checklist is incomplete. Each record must have exactly these top-level fields:
 source_file, raw_text_sha256, company_name, product_name, expected_gwp100_value, expected_gwp100_reason, oil_gas_relevant, oil_gas_relevant_reason, is_benchmarch_ok, oil_and_gas_check_ok, minimum_requirements, extraction_notes.
 Set expected_gwp100_value, expected_gwp100_reason, oil_gas_relevant, oil_gas_relevant_reason, is_benchmarch_ok, and oil_and_gas_check_ok to null.
 
 Minimum requirement checklist to assess:
-1. gwp100_excluding_biogenic: mandatory climate change / GWP 100 PCF value excluding biogenic carbon. If fulfilled, result must be {"value": number, "unit": string}. If the value or unit is absent, fulfilled must be false and result must be null; do not invent it.
-2. gwp100_including_biogenic: GWP 100 PCF value including biogenic carbon. If present, result must be {"value": number, "unit": string}; if absent, fulfilled must be false and result must be null.
+1. gwp100_excluding_biogenic: mandatory climate change / GWP 100 PCF value excluding biogenic carbon. If fulfilled, result must be {{"value": number, "unit": string}}. Units such as kgCO2e/MJ, kgCO2/MJ, kgCO2e/lb, and kgCO2/lb are acceptable when explicitly reported with a numeric value. "Carbon intensity" or a very close equivalent is acceptable only when it clearly means product/process greenhouse gas emissions intensity or climate impact. If a GWP, PCF, climate change, or accepted carbon intensity value has a numeric value and accepted unit but does not state whether biogenic carbon is included or excluded, use it here and mark this criterion fulfilled true. Do not accept broad or unrelated carbon terms such as carbon content, carbon storage, biogenic carbon share, carbon credit, carbon neutrality, or avoided emissions. If the value or unit is absent, fulfilled must be false and result must be null; do not invent it.
+2. gwp100_including_biogenic: GWP 100 PCF value including biogenic carbon. If present, result must be {{"value": number, "unit": string}}. Units such as kgCO2e/MJ, kgCO2/MJ, kgCO2e/lb, and kgCO2/lb are acceptable when explicitly reported with a numeric value. "Carbon intensity" or a very close equivalent is acceptable only when it clearly means product/process greenhouse gas emissions intensity or climate impact. This criterion is fulfilled true only when the text explicitly says the value includes biogenic carbon or gives an equivalent clear statement; if biogenic inclusion/exclusion is not stated, do not use the value here. If absent, fulfilled must be false and result must be null.
 3. system_boundary: the PCF calculation system boundary must be documented, for example cradle-to-gate.
 4. accepted_standard: only TfS guideline, ISO 14040/14044 together, or ISO 14067 are accepted.
-5. production_location: country or region of production must be documented. Use the production/process location, not the report issuer's address or HQ.
-6. reference_year: reference year of production data/data collection must be documented. Do not use the report issue/publication year unless explicitly stated as the data reference year.
+5. production_location: country or region of production must be documented. Regions such as Europe, European Union, North America, Asia-Pacific, or similar geographic production regions are acceptable when they describe the product/process geography or production region. Use the production/process location, not the report issuer's address or HQ.
+6. reference_year: reference year of production data/data collection must be documented. Study dates or audit dates are acceptable when they refer to onsite measurement, onsite data collection, or the study period used for the PCF calculation. If production data is provided as a month-and-year period, fulfill the requirement and use the year at the beginning of the period as result. Do not use the report issue/publication year unless explicitly stated as the data reference year.
 7. impact_assessment_method: PCF impact assessment method must be documented, for example IPCC AR6, CML2001, ISO14067, or another named method.
-8. secondary_databases: secondary emission factor databases must be documented and must be limited to ecoinvent 3.10 and/or Sphera Managed Content 2024. Any other database or version fails this requirement.
+8. secondary_databases: if no secondary factor database is provided, this requirement is fulfilled. If a secondary factor database is provided, it must be ecoinvent version 3.10 or newer and/or Sphera Managed Content version 2024 or newer. For example, ecoinvent 3.11 fulfills the requirement because it is newer than the minimum required ecoinvent 3.10. A provided database with a missing version, an older-than-required version, or a database that does not match the accepted criteria fails this requirement.
+9. oil_and_gas_update: fulfill this only when the documentation explicitly states that the oil and gas update is applied. Do not mark it fulfilled merely because the text mentions oil, gas, natural gas, methane emissions, upstream emissions, or updated emission factors. Accept only explicit wording such as "oil and gas update", "oil & gas update", or a clearly equivalent statement that the specific oil-and-gas update has been applied.
 
 For every checklist item, add one named minimum_requirements field with fulfilled true or false.
 When evidence is missing or ambiguous, fulfilled must be false.
 When fulfilled is true, include the extracted answer in result.
+Never use placeholder numeric values such as 0, 0.0, -1, or 999 to satisfy the schema. If a numeric GWP/PCF value is not explicitly visible in the text, set the relevant result to null and fulfilled false.
+Do not treat a functional unit or declared unit such as "1 kg product", "1 kg of unpackaged product", or "per kg product" as a GWP/PCF value. A GWP/PCF value must be an emissions or climate impact number paired with a compatible emissions unit such as kg CO2e, kg CO2, g CO2e/MJ, or kg CO2e/kg.
 
 Return JSON matching this schema:
 {schema}

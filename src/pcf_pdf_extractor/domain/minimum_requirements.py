@@ -133,24 +133,22 @@ def _secondary_databases_check(
     unapproved_databases = [
         database for database in check.result if not _is_approved_secondary_database(database)
     ]
-    fulfilled = has_databases and not unapproved_databases
+    fulfilled = not unapproved_databases
 
-    if fulfilled:
+    if fulfilled and has_databases:
         reason = (
-            "Only approved secondary databases were extracted: ecoinvent 3.10 or "
-            "Sphera Managed Content 2024."
+            "Only approved secondary databases were extracted: ecoinvent 3.10 or newer "
+            "and/or Sphera Managed Content 2024 or newer."
         )
     elif has_databases:
         reason = (
             "At least one secondary emission factor database is not allowed. Only "
-            "ecoinvent 3.10 or Sphera Managed Content 2024 are accepted. Found: "
+            "ecoinvent 3.10 or newer and Sphera Managed Content 2024 or newer are "
+            "accepted. Found: "
             f"{_format_databases(unapproved_databases)}."
         )
     else:
-        reason = (
-            "No approved secondary emission factor database was extracted. Only ecoinvent "
-            "3.10 or Sphera Managed Content 2024 are accepted."
-        )
+        reason = "No secondary emission factor database was extracted, which is acceptable."
 
     database_evidence = _format_databases(check.result)
     return SecondaryDatabasesRequirementCheck(
@@ -179,9 +177,9 @@ def _has_accepted_standard(standards: list[str]) -> bool:
     normalized = " ".join(standards).lower().replace("/", " ")
     has_tfs = "tfs" in normalized or "together for sustainability" in normalized
     has_iso_14067 = _contains_iso(normalized, "14067")
-    has_iso_14040_and_14044 = _contains_iso(normalized, "14040") and _contains_iso(
-        normalized,
-        "14044",
+    has_iso_14040_and_14044 = (
+        (_contains_iso(normalized, "14040") and _contains_iso(normalized, "14044"))
+        or _contains_iso_14040_44_shorthand(" ".join(standards).lower())
     )
     return has_tfs or has_iso_14067 or has_iso_14040_and_14044
 
@@ -189,12 +187,12 @@ def _has_accepted_standard(standards: list[str]) -> bool:
 def _is_approved_secondary_database(database: SecondaryDatabase) -> bool:
     name = _normalize_text(database.name)
     is_ecoinvent_310_or_above = "ecoinvent" in name and _version_gte(database.version, 3.10)
-    is_sphera_2024_or_older = (
+    is_sphera_2024_or_above = (
         "sphera" in name
         and ("managed content" in name or "managedcontent" in name)
-        and _year_lte(database.version, 2024)
+        and _year_gte(database.version, 2024)
     )
-    return is_ecoinvent_310_or_above or is_sphera_2024_or_older
+    return is_ecoinvent_310_or_above or is_sphera_2024_or_above
 
 
 def _normalize_text(value: str) -> str:
@@ -203,6 +201,10 @@ def _normalize_text(value: str) -> str:
 
 def _contains_iso(normalized_text: str, number: str) -> bool:
     return bool(re.search(rf"\biso\s*{number}\b|\b{number}\b", normalized_text))
+
+
+def _contains_iso_14040_44_shorthand(text: str) -> bool:
+    return bool(re.search(r"\biso\s*14040\s*(?:/|-|to|and)\s*44\b", text))
 
 
 def _pcf_value_evidence(result: PcfValueResult | None) -> str | None:
@@ -233,13 +235,13 @@ def _version_gte(version: str | None, threshold: float) -> bool:
         return False
 
 
-def _year_lte(version: str | None, threshold: int) -> bool:
+def _year_gte(version: str | None, threshold: int) -> bool:
     if not version:
         return False
     match = re.search(r"\b(19\d{2}|20\d{2})\b", version)
     if not match:
         return False
     try:
-        return int(match.group(1)) <= threshold
+        return int(match.group(1)) >= threshold
     except ValueError:
         return False
