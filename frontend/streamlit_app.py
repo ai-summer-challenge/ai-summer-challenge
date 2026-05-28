@@ -2,6 +2,7 @@ import json
 import os
 from typing import Any
 
+import pandas as pd
 import streamlit as st
 
 from frontend.api_client import BackendApiError, PcfBackendClient
@@ -33,14 +34,7 @@ def main() -> None:
     if not records:
         return
 
-    selected_index = _render_record_selector(records)
-    selected_record = records[selected_index]
-    reviewed_record = _render_record_review(selected_record, selected_index)
-    reviewed_record = _assess_reviewed_record(backend_client, reviewed_record)
-    st.session_state.records[selected_index] = reviewed_record
-
-    _render_requirements(reviewed_record)
-    _render_json_export(reviewed_record, selected_index)
+    _render_records_overview(backend_client, records)
 
 
 def _ensure_session_state() -> None:
@@ -303,48 +297,132 @@ def _render_batch_results() -> None:
         )
 
 
-def _render_record_selector(records: list[dict[str, Any]]) -> int:
-    labels = [
-        (
-            f"{index + 1:02d} - "
-            f"{record.get('product_name') or record.get('company_name') or 'Unnamed record'} "
-            f"({record.get('_source_file_name', 'unknown source')})"
-        )
-        for index, record in enumerate(records)
-    ]
-    selected_label = st.selectbox("Extracted record", options=labels)
-    return labels.index(selected_label)
+def _render_records_overview(backend_client: PcfBackendClient, records: list[dict[str, Any]]) -> None:
+    st.subheader("Chemicals")
+    st.session_state.setdefault("selected_record_index", 0)
 
+    overview_rows = []
+    labels = []
+    for index, record in enumerate(records):
+        minimum_requirements = record.get("minimum_requirements") or {}
+        total = 0
+        fulfilled = 0
+        for check in minimum_requirements.values():
+            if not isinstance(check, dict):
+                continue
+            total += 1
+            if check.get("fulfilled") is True:
+                fulfilled += 1
+        open_count = max(total - fulfilled, 0)
+        labels.append(
+            f"{index + 1:02d} | {record.get('product_name') or 'Unnamed'}"
+        )
+        minimum_requirements = record.get("minimum_requirements") or {}
+        r1_standard = _requirement_status(minimum_requirements.get("accepted_standard"))
+        r2_country = _requirement_status(minimum_requirements.get("production_location"))
+        r3_ref_year = _requirement_status(minimum_requirements.get("reference_year"))
+        r4_method = _requirement_status(minimum_requirements.get("impact_assessment_method"))
+        r6_secondary_db = _requirement_status(minimum_requirements.get("secondary_databases"))
+        r7_oil_gas_update = _requirement_status(minimum_requirements.get("oil_and_gas_update"))
+        pcf_two = "PASS" if _two_pcf_ok(record) else "FAIL"
+        deviation = _deviation_status(record)
+        verdict = _verdict_status(
+            r1_standard,
+            r2_country,
+            r3_ref_year,
+            r4_method,
+            pcf_two,
+            r6_secondary_db,
+            r7_oil_gas_update,
+            deviation,
+            open_count,
+        )
+        overview_rows.append(
+            {
+                "#": f"{index + 1:02d}",
+                "Supplier": record.get("company_name") or "n/a",
+                "Product": record.get("product_name") or "Unnamed",
+                "O&G": _oil_gas_label(record),
+                "R1 2 PCFs": pcf_two,
+                "R2 Standard": r1_standard,
+                "R3 Country": r2_country,
+                "R4 Ref Year": r3_ref_year,
+                "R5 Method": r4_method,
+                "R6 Secondary DB": r6_secondary_db,
+                "R7 O&G Update": r7_oil_gas_update,
+                "Deviation vs Reference": deviation,
+                "Verdict": verdict,
+                "Recommendation": _recommendation_text(verdict, open_count),
+                "source": record.get("_source_file_name") or "unknown",
+            }
+        )
+
+    overview_df = pd.DataFrame(overview_rows)
+    styled_overview = overview_df.style.apply(
+        lambda row: [
+            (
+                "background-color: #e7f6ef; color: #136f47; font-weight: 700;"
+                if str(row[column]).upper() in {"PASS", "ACCEPT", "YES"}
+                else (
+                    "background-color: #fff3d6; color: #8f5a00; font-weight: 700;"
+                    if str(row[column]).upper() in {"PARTIAL", "CONDITIONAL ACCEPT"}
+                    else (
+                        "background-color: #fde9ef; color: #a0233e; font-weight: 700;"
+                        if str(row[column]).upper() in {"FAIL", "REJECT", "NO"}
+                        else ""
+                    )
+                )
+            )
+            for column in overview_df.columns
+        ],
+        axis=1,
+    )
+
+    st.dataframe(
+        styled_overview,
+        hide_index=True,
+        use_container_width=True,
+    )
+    selected_label = st.selectbox("Select chemical", options=labels)
+    selected_index = labels.index(selected_label)
+    st.session_state.selected_record_index = selected_index
+
+    selected_record = records[selected_index]
+    reviewed_record = _render_record_review(selected_record, selected_index)
+    reviewed_record = _assess_reviewed_record(backend_client, reviewed_record)
+    st.session_state.records[selected_index] = reviewed_record
+    _render_requirements(reviewed_record)
+    _render_json_export(reviewed_record, selected_index)
+    return
 
 def _render_record_review(record: dict[str, Any], record_index: int) -> dict[str, Any]:
     st.subheader("Review")
-    gwp_left, gwp_right = st.columns(2)
-    with gwp_left:
-        st.metric("GWP100 excl. biogenic", _gwp_display(record, "gwp100_excluding_biogenic"))
-    with gwp_right:
-        st.metric("GWP100 incl. biogenic", _gwp_display(record, "gwp100_including_biogenic"))
-
     names_left, names_right = st.columns(2)
     with names_left:
-        company_name = st.text_input(
-            "Company name",
-            value=record.get("company_name") or "",
-            key=f"company-name-{record_index}",
-        )
-    with names_right:
         product_name = st.text_input(
             "Product name",
             value=record.get("product_name") or "",
             key=f"product-name-{record_index}",
         )
+    with names_right:
+        company_name = st.text_input(
+            "Company name",
+            value=record.get("company_name") or "",
+            key=f"company-name-{record_index}",
+        )
+
+    gwp_left, gwp_right = st.columns(2)
+    with gwp_left:
+        st.metric("GWP100 excl. biogenic", _gwp_display(record, "gwp100_excluding_biogenic"))
+    with gwp_right:
+        st.metric("GWP100 incl. biogenic", _gwp_display(record, "gwp100_including_biogenic"))
+    expected_left, _ = st.columns(2)
+    with expected_left:
+        st.metric("Expected GWP100 (reference)", _expected_gwp_display(record))
     biogenic_carbon_content = record.get("biogenic_carbon_content")
 
     extraction_notes = record.get("extraction_notes") or []
-    extraction_notes_text = st.text_area(
-        "Extraction notes",
-        value="\n".join(str(note) for note in extraction_notes),
-        key=f"extraction-notes-{record_index}",
-    )
+    extraction_notes_text = "\n".join(str(note) for note in extraction_notes)
 
     return apply_record_review_edits(
         record,
@@ -380,17 +458,56 @@ def _render_requirements(record: dict[str, Any]) -> None:
     requirement_rows = []
     fulfilled_count = 0
     total_count = 0
+    required_keys = [
+        "system_boundary",
+        "accepted_standard",
+        "production_location",
+        "reference_year",
+        "impact_assessment_method",
+        "secondary_databases",
+        "is_benchmarch_ok",
+        "oil_and_gas_update",
+    ]
 
-    for name, check in minimum_requirements.items():
-        if not isinstance(check, dict):
+    for name in required_keys:
+        if name == "is_benchmarch_ok":
+            total_count += 1
+            bench_value = record.get("is_benchmarch_ok")
+            fulfilled = bench_value is True
+            if fulfilled:
+                fulfilled_count += 1
+            requirement_rows.append(
+                {
+                    "requirement": "is_benchmarch_ok",
+                    "fulfilled": bench_value,
+                    "result": _format_result(bench_value),
+                    "evidence": "",
+                    "reason": "",
+                }
+            )
             continue
+
+        check = minimum_requirements.get(name)
+        if not isinstance(check, dict):
+            total_count += 1
+            requirement_rows.append(
+                {
+                    "requirement": "product_location" if name == "production_location" else name,
+                    "fulfilled": None,
+                    "result": "",
+                    "evidence": "",
+                    "reason": "Missing in backend payload.",
+                }
+            )
+            continue
+
         total_count += 1
         fulfilled = check.get("fulfilled") is True
         if fulfilled:
             fulfilled_count += 1
         requirement_rows.append(
             {
-                "requirement": name,
+                "requirement": "product_location" if name == "production_location" else name,
                 "fulfilled": check.get("fulfilled"),
                 "result": _format_result(check.get("result")),
                 "evidence": check.get("evidence") or "",
@@ -445,6 +562,10 @@ def _without_ui_metadata(record: dict[str, Any]) -> dict[str, Any]:
         "raw_text_sha256",
         "company_name",
         "product_name",
+        "expected_gwp100_value",
+        "oil_gas_relevant",
+        "is_benchmarch_ok",
+        "oil_and_gas_check_ok",
         "minimum_requirements",
         "extraction_notes",
     }
@@ -482,11 +603,128 @@ def _gwp_display(record: dict[str, Any], requirement_key: str) -> str:
     return str(value)
 
 
+def _expected_gwp_display(record: dict[str, Any]) -> str:
+    expected_payload = record.get("expected_gwp100_value")
+    if not isinstance(expected_payload, dict):
+        return "n/a"
+    result = expected_payload.get("result")
+    if not isinstance(result, dict):
+        return "n/a"
+    value = result.get("value")
+    unit = result.get("unit")
+    if value is None:
+        return "n/a"
+    if isinstance(unit, str) and unit.strip():
+        return f"{value} {unit}"
+    return str(value)
+
+
 def _record_slug(record: dict[str, Any]) -> str:
     raw_name = record.get("product_name") or record.get("company_name") or "pcf-record"
     return "".join(character.lower() if character.isalnum() else "-" for character in raw_name).strip(
         "-"
     ) or "pcf-record"
+
+
+def _overall_result_label(record: dict[str, Any], open_requirements: int | None = None) -> str:
+    # Preferred backend field (planned): requirements_status
+    backend_value = str(record.get("requirements_status") or "").strip().lower()
+    if backend_value in {"fulfilled", "rejected", "missing"}:
+        return backend_value
+
+    if open_requirements is None:
+        minimum_requirements = record.get("minimum_requirements") or {}
+        total = 0
+        fulfilled = 0
+        for check in minimum_requirements.values():
+            if not isinstance(check, dict):
+                continue
+            total += 1
+            if check.get("fulfilled") is True:
+                fulfilled += 1
+        open_requirements = max(total - fulfilled, 0)
+
+    return "fulfilled" if open_requirements == 0 else "missing"
+
+
+def _two_pcf_ok(record: dict[str, Any]) -> bool:
+    minimum_requirements = record.get("minimum_requirements") or {}
+    gwp_excl = minimum_requirements.get("gwp100_excluding_biogenic") or {}
+    gwp_incl = minimum_requirements.get("gwp100_including_biogenic") or {}
+
+    excl_fulfilled = isinstance(gwp_excl, dict) and gwp_excl.get("fulfilled") is True
+    incl_fulfilled = isinstance(gwp_incl, dict) and gwp_incl.get("fulfilled") is True
+
+    oil_relevant_payload = record.get("oil_gas_relevant")
+    oil_relevant: bool | None = None
+    if isinstance(oil_relevant_payload, dict):
+        oil_relevant = oil_relevant_payload.get("result")
+    elif isinstance(oil_relevant_payload, bool):
+        oil_relevant = oil_relevant_payload
+
+    if oil_relevant is True and excl_fulfilled:
+        return True
+    if oil_relevant is False and excl_fulfilled and incl_fulfilled:
+        return True
+    return False
+
+
+def _requirement_status(check: Any) -> str:
+    if not isinstance(check, dict):
+        return "MISSING"
+    return "PASS" if check.get("fulfilled") is True else "FAIL"
+
+
+def _oil_gas_label(record: dict[str, Any]) -> str:
+    payload = record.get("oil_gas_relevant")
+    value: bool | None = None
+    if isinstance(payload, dict):
+        value = payload.get("result")
+    elif isinstance(payload, bool):
+        value = payload
+    if value is True:
+        return "YES"
+    if value is False:
+        return "NO"
+    return "N/A"
+
+
+def _deviation_status(record: dict[str, Any]) -> str:
+    value = record.get("is_benchmarch_ok")
+    if value is True:
+        return "PASS"
+    if value is False:
+        return "FAIL"
+    return "N/A"
+
+
+def _verdict_status(
+    r1_standard: str,
+    r2_country: str,
+    r3_ref_year: str,
+    r4_method: str,
+    pcf_two: str,
+    r6_secondary_db: str,
+    r7_oil_gas_update: str,
+    deviation: str,
+    open_count: int,
+) -> str:
+    hard_fails = [r1_standard, r2_country, r3_ref_year, r4_method]
+    if any(item == "FAIL" for item in hard_fails):
+        return "REJECT"
+    if pcf_two == "PASS" and r6_secondary_db == "PASS" and (deviation in {"PASS", "N/A"}) and open_count == 0:
+        return "ACCEPT"
+    if pcf_two == "FAIL" or r7_oil_gas_update == "FAIL":
+        return "CONDITIONAL ACCEPT"
+    return "CONDITIONAL ACCEPT"
+
+
+def _recommendation_text(verdict: str, open_count: int) -> str:
+    if verdict == "ACCEPT":
+        return "ACCEPT"
+    if verdict == "REJECT":
+        return "REJECT - complete missing mandatory requirements."
+    return f"CONDITIONAL - review {open_count} open requirement(s)."
 
 
 def _fossil_label(value: Any) -> str:

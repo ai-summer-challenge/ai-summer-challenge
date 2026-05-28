@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from pcf_pdf_extractor.application import ExtractPcfFromPdf
 from pcf_pdf_extractor.config import Settings, get_settings
 from pcf_pdf_extractor.domain import PCFExtractionResult, PCFRecord, assess_minimum_requirements
+from pcf_pdf_extractor.enrichment import build_reference_data_enricher
 from pcf_pdf_extractor.extraction import ExtractorKind, build_extractor
 
 app = FastAPI(title="PCF PDF Extractor API")
@@ -48,8 +49,13 @@ def extract_pdf(
 
     temporary_path = _write_upload_to_temporary_file(file)
     try:
-        pcf_extractor = build_extractor(extractor, get_settings())
-        records = ExtractPcfFromPdf(extractor=pcf_extractor).run(temporary_path)
+        settings = get_settings()
+        pcf_extractor = build_extractor(extractor, settings)
+        reference_enricher = build_reference_data_enricher(settings)
+        records = ExtractPcfFromPdf(
+            extractor=pcf_extractor,
+            enricher=reference_enricher,
+        ).run(temporary_path)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
