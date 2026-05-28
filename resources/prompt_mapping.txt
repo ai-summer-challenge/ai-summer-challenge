@@ -38,6 +38,7 @@ Clarification policy:
 Oil & Gas relevance policy:
 - oil_gas_relevant must always be true or false.
 - Mark true only when identity match to Eclasses list is chemically clear.
+- Be mindful of translations, as elements in the Eclasses list are in German and product_name is in English, don't miss out on those elements
 - If uncertain, mark false.
 
 Output schema:
