@@ -8,6 +8,7 @@ import typer
 from pcf_pdf_extractor.application import ExtractPcfFromSource
 from pcf_pdf_extractor.config import get_settings
 from pcf_pdf_extractor.domain import PCFRecord
+from pcf_pdf_extractor.enrichment import build_reference_data_enricher
 from pcf_pdf_extractor.extraction import ExtractorKind, build_extractor
 from pcf_pdf_extractor.infrastructure.api import CompanyApiClient
 
@@ -40,6 +41,13 @@ def extract(
             ),
         ),
     ] = None,
+    enrich_reference_data: Annotated[
+        bool,
+        typer.Option(
+            "--enrich-reference-data/--no-enrich-reference-data",
+            help="Map each extracted product to BAFU/Eclasses reference data after extraction.",
+        ),
+    ] = False,
 ) -> None:
     """Read a supported source file and emit one PCF JSON record per chemical/product."""
 
@@ -48,11 +56,52 @@ def extract(
     records = ExtractPcfFromSource(extractor=pcf_extractor).run(source_path)
     if not records:
         raise typer.BadParameter("No chemical/product PCF records were extracted from this source.")
+    if enrich_reference_data:
+        reference_enricher = build_reference_data_enricher(settings)
+        for record in records:
+            reference_enricher.enrich(record)
 
     if output is not None:
         written_paths = _write_records(records, output)
         for path in written_paths:
             typer.echo(f"Wrote extracted PCF record to {path}")
+        return
+
+    payload: object
+    if len(records) == 1:
+        payload = _record_payload(records[0])
+    else:
+        payload = [_record_payload(record) for record in records]
+    typer.echo(json.dumps(payload, indent=2, ensure_ascii=False))
+
+
+@app.command()
+def enrich(
+    json_path: Annotated[
+        Path,
+        typer.Argument(help="Extracted PCF JSON file to enrich with BAFU/Eclasses data."),
+    ],
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            "-o",
+            help="Optional JSON file or directory for the enriched record(s).",
+        ),
+    ] = None,
+) -> None:
+    """Add expected BAFU GWP 100 and Eclasses Oil & Gas relevance to PCF JSON."""
+
+    settings = get_settings()
+    records = _read_records(json_path)
+    reference_enricher = build_reference_data_enricher(settings)
+    for record in records:
+        reference_enricher.enrich(record)
+
+    if output is not None:
+        written_paths = _write_records(records, output)
+        for path in written_paths:
+            typer.echo(f"Wrote enriched PCF record to {path}")
         return
 
     payload: object
@@ -73,6 +122,15 @@ def ship(
     client = CompanyApiClient.from_settings(get_settings())
     response_payload = client.submit_pcf_record(record)
     typer.echo(json.dumps(response_payload, indent=2, ensure_ascii=False))
+
+
+def _read_records(json_path: Path) -> list[PCFRecord]:
+    payload = json.loads(json_path.read_text(encoding="utf-8"))
+    if isinstance(payload, dict) and isinstance(payload.get("records"), list):
+        return [PCFRecord.model_validate(record) for record in payload["records"]]
+    if isinstance(payload, list):
+        return [PCFRecord.model_validate(record) for record in payload]
+    return [PCFRecord.model_validate(payload)]
 
 
 def _write_records(records: list[PCFRecord], output: Path) -> list[Path]:

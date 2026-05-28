@@ -73,6 +73,14 @@ class LlmPcfExtractor:
             legacy_gwp100 = legacy_gwp100.get("without_biogenic_carbon")
 
         for field_name in [
+            "expected_gwp100_value",
+            "oil_gas_relevant",
+            "is_benchmarch_ok",
+            "oil_and_gas_check_ok",
+        ]:
+            normalized.setdefault(field_name, None)
+
+        for field_name in [
             "extraction_notes",
         ]:
             if normalized.get(field_name) is None:
@@ -193,8 +201,12 @@ class LlmPcfExtractor:
             "For every record, return source_file and raw_text_sha256 as null; the application "
             "fills them after the LLM response. "
             "Each record must contain exactly these top-level fields: "
-            "source_file, raw_text_sha256, company_name, product_name, minimum_requirements, "
+            "source_file, raw_text_sha256, company_name, product_name, expected_gwp100_value, "
+            "oil_gas_relevant, is_benchmarch_ok, oil_and_gas_check_ok, minimum_requirements, "
             "and extraction_notes. "
+            "Set expected_gwp100_value, oil_gas_relevant, is_benchmarch_ok, and "
+            "oil_and_gas_check_ok to null; the reference-data enrichment step fills them "
+            "after extraction. "
             "Do not return any other top-level fields. Put extracted requirement values inside "
             "minimum_requirements.<field>.result. "
             "minimum_requirements.gwp100_excluding_biogenic is the mandatory climate change "
@@ -260,7 +272,9 @@ class LlmPcfExtractor:
             f"{truncation_note}\n\n"
             "Return one record per chemical/product. Each record must have exactly these "
             "top-level fields: source_file, raw_text_sha256, company_name, product_name, "
-            "minimum_requirements, extraction_notes.\n\n"
+            "expected_gwp100_value, oil_gas_relevant, is_benchmarch_ok, oil_and_gas_check_ok, "
+            "minimum_requirements, extraction_notes. Set expected_gwp100_value, "
+            "oil_gas_relevant, is_benchmarch_ok, and oil_and_gas_check_ok to null.\n\n"
             "Minimum requirement checklist to assess:\n"
             "1. gwp100_excluding_biogenic: mandatory climate change / GWP 100 PCF value "
             "excluding biogenic carbon. If fulfilled, result must be "

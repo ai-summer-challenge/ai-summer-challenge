@@ -97,6 +97,25 @@ class PCFRecord(BaseModel):
 
     company_name: str | None = None
     product_name: str | None = None
+    expected_gwp100_value: PcfValueResult | None = Field(
+        default=None,
+        description="Reference GWP 100 value from the BAFU mapping, when available.",
+    )
+    oil_gas_relevant: bool | None = Field(
+        default=None,
+        description="Whether the product is relevant according to the Eclasses Oil & Gas list.",
+    )
+    is_benchmarch_ok: bool | None = Field(
+        default=None,
+        description="True when expected_gwp100_value is within 30% of extracted gwp100_excluding_biogenic.",
+    )
+    oil_and_gas_check_ok: bool | None = Field(
+        default=None,
+        description=(
+            "True when oil_gas_relevant is true and either oil_and_gas_update.result is true "
+            "or secondary_databases.result is non-empty."
+        ),
+    )
     minimum_requirements: MinimumRequirements
     extraction_notes: list[str] = Field(default_factory=list)
 
