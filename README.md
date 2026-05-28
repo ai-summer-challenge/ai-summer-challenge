@@ -134,7 +134,7 @@ pcf-extract extract data/incoming/multi_product.pdf --output data/processed/mult
 A small script is also available if you want a direct extension-based file-to-JSON entry point:
 
 ```bash
-python scripts/extract_source_to_json.py data/incoming/example.xlsx --output data/processed/example.json
+python scripts/extract_source_to_json.py data/incoming/example.xlsx --enrich-reference-data --output data/processed/example.json
 ```
 
 LLM extraction is the default. Configure it in `.env` first:

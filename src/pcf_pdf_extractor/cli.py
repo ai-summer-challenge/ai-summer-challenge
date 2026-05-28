@@ -7,7 +7,7 @@ import typer
 
 from pcf_pdf_extractor.application import ExtractPcfFromSource
 from pcf_pdf_extractor.config import get_settings
-from pcf_pdf_extractor.domain import PCFRecord
+from pcf_pdf_extractor.domain import BooleanRequirementCheck, PCFRecord, PcfValueRequirementCheck
 from pcf_pdf_extractor.enrichment import build_reference_data_enricher
 from pcf_pdf_extractor.extraction import ExtractorKind, build_extractor
 from pcf_pdf_extractor.infrastructure.api import CompanyApiClient
@@ -60,6 +60,7 @@ def extract(
         reference_enricher = build_reference_data_enricher(settings)
         for record in records:
             reference_enricher.enrich(record)
+            _ensure_enrichment_fields(record)
 
     if output is not None:
         written_paths = _write_records(records, output)
@@ -97,6 +98,7 @@ def enrich(
     reference_enricher = build_reference_data_enricher(settings)
     for record in records:
         reference_enricher.enrich(record)
+        _ensure_enrichment_fields(record)
 
     if output is not None:
         written_paths = _write_records(records, output)
@@ -127,10 +129,10 @@ def ship(
 def _read_records(json_path: Path) -> list[PCFRecord]:
     payload = json.loads(json_path.read_text(encoding="utf-8"))
     if isinstance(payload, dict) and isinstance(payload.get("records"), list):
-        return [PCFRecord.model_validate(record) for record in payload["records"]]
+        return [PCFRecord.model_validate(_normalize_legacy_record_payload(record)) for record in payload["records"]]
     if isinstance(payload, list):
-        return [PCFRecord.model_validate(record) for record in payload]
-    return [PCFRecord.model_validate(payload)]
+        return [PCFRecord.model_validate(_normalize_legacy_record_payload(record)) for record in payload]
+    return [PCFRecord.model_validate(_normalize_legacy_record_payload(payload))]
 
 
 def _write_records(records: list[PCFRecord], output: Path) -> list[Path]:
@@ -174,4 +176,84 @@ def _record_slug(record: PCFRecord, index: int) -> str:
 
 
 def _record_payload(record: PCFRecord) -> dict:
+    _ensure_enrichment_fields(record)
     return record.model_dump(mode="json")
+
+
+def _ensure_enrichment_fields(record: PCFRecord) -> None:
+    if record.expected_gwp100_value is None:
+        record.expected_gwp100_value = PcfValueRequirementCheck(
+            fulfilled=False,
+            reason="Enrichment did not provide a BAFU mapping result.",
+            evidence=None,
+            result=None,
+        )
+    if record.oil_gas_relevant is None:
+        record.oil_gas_relevant = BooleanRequirementCheck(
+            fulfilled=False,
+            reason="Enrichment did not provide an Eclasses relevance result.",
+            evidence=None,
+            result=False,
+        )
+    if record.is_benchmarch_ok is None:
+        record.is_benchmarch_ok = False
+    if record.oil_and_gas_check_ok is None:
+        record.oil_and_gas_check_ok = False
+
+
+def _normalize_legacy_record_payload(payload: dict) -> dict:
+    normalized = dict(payload)
+    minimum_requirements = normalized.get("minimum_requirements")
+    if isinstance(minimum_requirements, dict):
+        secondary_databases = minimum_requirements.get("secondary_databases")
+        if isinstance(secondary_databases, dict):
+            secondary_result = secondary_databases.get("result")
+            if isinstance(secondary_result, list):
+                fulfilled = secondary_databases.get("fulfilled")
+                secondary_databases["result"] = bool(fulfilled) if isinstance(fulfilled, bool) else bool(secondary_result)
+        elif isinstance(secondary_databases, list):
+            minimum_requirements["secondary_databases"] = {
+                "fulfilled": bool(secondary_databases),
+                "result": bool(secondary_databases),
+                "evidence": None,
+                "reason": "Migrated from legacy secondary_databases list field.",
+            }
+
+    expected = normalized.get("expected_gwp100_value")
+    if isinstance(expected, dict) and "fulfilled" not in expected and "result" not in expected:
+        normalized["expected_gwp100_value"] = {
+            "fulfilled": True,
+            "result": expected,
+            "evidence": None,
+            "reason": "Migrated from legacy expected_gwp100_value structure.",
+        }
+    elif expected is None:
+        normalized["expected_gwp100_value"] = {
+            "fulfilled": False,
+            "result": None,
+            "evidence": None,
+            "reason": "No expected_gwp100_value was available.",
+        }
+
+    oil_gas = normalized.get("oil_gas_relevant")
+    if isinstance(oil_gas, bool):
+        normalized["oil_gas_relevant"] = {
+            "fulfilled": True,
+            "result": oil_gas,
+            "evidence": None,
+            "reason": "Migrated from legacy oil_gas_relevant boolean field.",
+        }
+    elif oil_gas is None:
+        normalized["oil_gas_relevant"] = {
+            "fulfilled": False,
+            "result": False,
+            "evidence": None,
+            "reason": "No oil_gas_relevant value was available.",
+        }
+
+    if normalized.get("is_benchmarch_ok") is None:
+        normalized["is_benchmarch_ok"] = False
+    if normalized.get("oil_and_gas_check_ok") is None:
+        normalized["oil_and_gas_check_ok"] = False
+
+    return normalized

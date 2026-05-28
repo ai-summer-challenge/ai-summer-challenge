@@ -40,4 +40,4 @@ Any other database or version means fulfilled false.
 Missing, ambiguous, or unsupported evidence means fulfilled false.
 Each check must include concise evidence and reason.
 Add short extraction_notes for uncertain fields, missing fields, or ambiguous wording.
-The product_name inside the JSON must be written in english, except company_name
+The product_name inside the JSON must be written in english, as well as the system_boundary

@@ -116,6 +116,15 @@ class LlmPcfExtractor:
         if not isinstance(minimum_requirements, dict):
             minimum_requirements = {}
             normalized["minimum_requirements"] = minimum_requirements
+        else:
+            secondary_databases = minimum_requirements.get("secondary_databases")
+            if isinstance(secondary_databases, dict):
+                secondary_result = secondary_databases.get("result")
+                if isinstance(secondary_result, list):
+                    fulfilled = secondary_databases.get("fulfilled")
+                    secondary_databases["result"] = (
+                        bool(fulfilled) if isinstance(fulfilled, bool) else bool(secondary_result)
+                    )
 
         self._set_legacy_pcf_requirement(
             minimum_requirements,
@@ -140,6 +149,7 @@ class LlmPcfExtractor:
             new_name="gwp100_including_biogenic",
         )
         self._fill_missing_requirement_defaults(minimum_requirements)
+        self._normalize_enrichment_fields(normalized)
 
         return normalized
 
@@ -218,6 +228,39 @@ class LlmPcfExtractor:
                 "reason": "No value was extracted.",
             },
         )
+
+    def _normalize_enrichment_fields(self, normalized: dict[str, Any]) -> None:
+        expected = normalized.get("expected_gwp100_value")
+        if isinstance(expected, dict) and "fulfilled" not in expected and "result" not in expected:
+            normalized["expected_gwp100_value"] = {
+                "fulfilled": True,
+                "result": expected,
+                "evidence": None,
+                "reason": "Migrated from legacy expected_gwp100_value structure.",
+            }
+        elif expected is None:
+            normalized["expected_gwp100_value"] = {
+                "fulfilled": False,
+                "result": None,
+                "evidence": None,
+                "reason": "No expected_gwp100_value was extracted.",
+            }
+
+        oil_gas = normalized.get("oil_gas_relevant")
+        if isinstance(oil_gas, bool):
+            normalized["oil_gas_relevant"] = {
+                "fulfilled": True,
+                "result": oil_gas,
+                "evidence": None,
+                "reason": "Migrated from legacy oil_gas_relevant boolean field.",
+            }
+        elif oil_gas is None:
+            normalized["oil_gas_relevant"] = {
+                "fulfilled": False,
+                "result": False,
+                "evidence": None,
+                "reason": "No oil_gas_relevant value was extracted.",
+            }
 
     def _system_prompt(self) -> str:
         return self._system_prompt_template
