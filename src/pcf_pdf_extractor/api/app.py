@@ -40,13 +40,13 @@ def runtime_status() -> RuntimeStatusResponse:
     responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
 )
 def extract_pdf(
-    file: Annotated[UploadFile, File(description="Supplier PDF containing PCF information.")],
+    file: Annotated[UploadFile, File(description="Supplier source file containing PCF information.")],
     extractor: Annotated[ExtractorKind, Form()] = ExtractorKind.LLM,
 ) -> PCFExtractionResult:
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Expected a PDF upload.")
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Uploaded file must have a filename.")
 
-    temporary_path = _write_upload_to_temporary_pdf(file)
+    temporary_path = _write_upload_to_temporary_file(file)
     try:
         pcf_extractor = build_extractor(extractor, get_settings())
         records = ExtractPcfFromPdf(extractor=pcf_extractor).run(temporary_path)
@@ -58,7 +58,7 @@ def extract_pdf(
         temporary_path.unlink(missing_ok=True)
 
     if not records:
-        raise HTTPException(status_code=400, detail="No PCF records were extracted from this PDF.")
+        raise HTTPException(status_code=400, detail="No PCF records were extracted from this file.")
     return PCFExtractionResult(records=records)
 
 
@@ -69,10 +69,11 @@ def assess_record(record: PCFRecord) -> PCFRecord:
     return reviewed_record
 
 
-def _write_upload_to_temporary_pdf(file: UploadFile) -> Path:
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temporary_pdf:
-        temporary_pdf.write(file.file.read())
-        return Path(temporary_pdf.name)
+def _write_upload_to_temporary_file(file: UploadFile) -> Path:
+    suffix = Path(file.filename or "").suffix
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix or ".bin") as temporary_file:
+        temporary_file.write(file.file.read())
+        return Path(temporary_file.name)
 
 
 def _llm_runtime_status(settings: Settings) -> tuple[bool, str | None]:

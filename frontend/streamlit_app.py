@@ -17,13 +17,12 @@ def main() -> None:
     _ensure_session_state()
     _apply_theme()
 
-    st.title("PCF Review")
+    if _show_start_screen():
+        _render_start_screen()
+        return
 
     backend_client = PcfBackendClient(_backend_api_url())
-    extractor_kind, uploaded_pdfs = _render_sidebar()
-    if not uploaded_pdfs and not st.session_state.records:
-        st.info("Upload one or more supplier PDFs in the sidebar to extract and review PCF records.")
-        return
+    _render_sidebar()
 
     if st.session_state.error_message:
         st.error(st.session_state.error_message)
@@ -55,36 +54,59 @@ def _backend_api_url() -> str:
     return os.environ.get("BACKEND_API_URL", DEFAULT_BACKEND_API_URL)
 
 
-def _render_sidebar() -> tuple[str, list[Any]]:
+def _render_sidebar() -> list[Any]:
     with st.sidebar:
         st.header("Extraction")
         st.caption(f"Backend: {_backend_api_url()}")
-        extractor_kind = st.selectbox(
-            "Extractor",
-            options=["llm", "heuristic"],
-            index=0,
-            help="Use heuristic when LLM settings are not configured.",
-        )
-        uploaded_pdfs = st.file_uploader(
-            "Supplier PDFs",
-            type=["pdf"],
+        uploaded_files = st.file_uploader(
+            "Supplier files",
             accept_multiple_files=True,
-            help="You can upload and run multiple PDFs in one batch.",
+            help="You can upload and run multiple source files in one batch.",
         )
 
-        if st.button("Extract PDFs", type="primary", disabled=not uploaded_pdfs):
+        if st.button("Extract files", type="primary", disabled=not uploaded_files):
             _reset_extraction_state()
-            _extract_uploaded_pdfs(uploaded_pdfs, extractor_kind)
+            _extract_uploaded_pdfs(uploaded_files)
 
         if st.session_state.source_file_name:
             st.caption(f"Last batch: {st.session_state.source_file_name}")
         if st.session_state.records:
             st.caption(f"Records extracted: {len(st.session_state.records)}")
 
-    return extractor_kind, uploaded_pdfs
+    return uploaded_files
 
 
-def _extract_uploaded_pdfs(uploaded_pdfs: list[Any], extractor_kind: str) -> None:
+def _show_start_screen() -> bool:
+    return not st.session_state.records and not st.session_state.batch_results
+
+
+def _render_start_screen() -> None:
+    left, center, right = st.columns([1, 1, 1], gap="small")
+    with center:
+        st.markdown(
+            """
+            <div class="start-shell">
+              <div class="start-title">PCF Extractor</div>
+              <div class="start-subtitle">Upload one or more supplier files.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.markdown("<div class='start-card compact'>", unsafe_allow_html=True)
+        uploaded_files = st.file_uploader(
+            "Supplier files",
+            accept_multiple_files=True,
+            label_visibility="collapsed",
+            key="start-upload-files",
+        )
+        if st.button("Extract", type="primary", disabled=not uploaded_files, key="start-extract"):
+            _reset_extraction_state()
+            _extract_uploaded_pdfs(uploaded_files)
+            st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
+
+
+def _extract_uploaded_pdfs(uploaded_pdfs: list[Any]) -> None:
     st.session_state.error_message = None
     backend_client = PcfBackendClient(_backend_api_url())
     all_records: list[dict[str, Any]] = []
@@ -102,7 +124,7 @@ def _extract_uploaded_pdfs(uploaded_pdfs: list[Any], extractor_kind: str) -> Non
             records = backend_client.extract_pdf(
                 file_name=uploaded_pdf.name,
                 file_bytes=uploaded_pdf.getvalue(),
-                extractor=extractor_kind,
+                extractor="llm",
             )
         except BackendApiError as exc:
             batch_results.append(
@@ -202,7 +224,7 @@ def _extract_uploaded_pdfs(uploaded_pdfs: list[Any], extractor_kind: str) -> Non
         if errors:
             st.session_state.error_message = "Batch extraction failed for all files."
         else:
-            st.session_state.error_message = "No PCF records were extracted from the selected PDFs."
+            st.session_state.error_message = "No PCF records were extracted from the selected files."
         return
 
     st.session_state.records = all_records
@@ -298,9 +320,9 @@ def _render_record_review(record: dict[str, Any], record_index: int) -> dict[str
     st.subheader("Review")
     gwp_left, gwp_right = st.columns(2)
     with gwp_left:
-        st.metric("GWP100 excl. biogenic", _gwp_display(record, "gwp100"))
+        st.metric("GWP100 excl. biogenic", _gwp_display(record, "gwp100_excluding_biogenic"))
     with gwp_right:
-        st.metric("GWP100 incl. biogenic", _gwp_display(record, "gwp100_biogenic"))
+        st.metric("GWP100 incl. biogenic", _gwp_display(record, "gwp100_including_biogenic"))
 
     names_left, names_right = st.columns(2)
     with names_left:
@@ -417,8 +439,20 @@ def _without_none_values(value: Any) -> Any:
 
 
 def _without_ui_metadata(record: dict[str, Any]) -> dict[str, Any]:
-    # Internal UI helper fields must not be sent to strict backend validators.
-    return {key: value for key, value in record.items() if not key.startswith("_")}
+    # Keep only fields accepted by the strict PCFRecord backend schema.
+    allowed_top_level_keys = {
+        "source_file",
+        "raw_text_sha256",
+        "company_name",
+        "product_name",
+        "minimum_requirements",
+        "extraction_notes",
+    }
+    return {
+        key: value
+        for key, value in record.items()
+        if key in allowed_top_level_keys and not key.startswith("_")
+    }
 
 
 def _format_result(value: Any) -> str:
@@ -484,13 +518,107 @@ def _apply_theme() -> None:
         .stButton > button[kind="primary"] {{
             background-color: {EVONIK_PRIMARY};
             border-color: {EVONIK_PRIMARY};
+            color: #ffffff !important;
         }}
         .stButton > button[kind="primary"]:hover {{
             background-color: #7f176f;
             border-color: #7f176f;
+            color: #ffffff !important;
         }}
         h1, h2, h3 {{
             color: {EVONIK_PRIMARY};
+        }}
+        .start-shell {{
+            margin: 18vh auto 0 auto;
+            width: min(33vw, 480px);
+            min-width: 320px;
+            text-align: center;
+        }}
+        .start-title {{
+            font-size: 2rem;
+            font-weight: 500;
+            color: #1f1f1f;
+            letter-spacing: 0;
+        }}
+        .start-subtitle {{
+            margin-top: 4px;
+            color: #6a6a6a;
+            font-size: 0.98rem;
+        }}
+        .start-card {{
+            margin: 18px auto 0 auto;
+            max-width: 760px;
+            border: 0;
+            border-radius: 0;
+            padding: 8px 0 0 0;
+            background: transparent;
+            box-shadow: none;
+        }}
+        .start-card.compact {{
+            width: min(33vw, 480px);
+            min-width: 320px;
+            padding: 4px 0 0 0;
+            text-align: center;
+            margin-left: auto;
+            margin-right: auto;
+        }}
+        .start-card.compact [data-testid="stFileUploader"] {{
+            width: 100%;
+            max-width: 100%;
+            margin: 0 auto;
+        }}
+        .start-card.compact [data-testid="stFileUploader"] > div {{
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 auto !important;
+        }}
+        .start-card.compact [data-testid="stFileUploaderDropzone"] {{
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 auto !important;
+        }}
+        .start-card.compact .stButton > button {{
+            width: 160px;
+            border-radius: 999px;
+            margin-top: 8px;
+            margin-left: auto;
+            margin-right: auto;
+            display: block;
+            color: #ffffff !important;
+        }}
+        .start-card.compact section[data-testid="stFileUploaderDropzone"] {{
+            border-radius: 999px;
+            border: 1px solid #ddd;
+            min-height: 44px;
+            background: #f3f3f3;
+            padding-top: 4px;
+            padding-bottom: 4px;
+        }}
+        .start-card.compact [data-testid="stFileUploaderDropzoneInstructions"] {{
+            width: 100%;
+            text-align: center;
+        }}
+        .start-card.compact [data-testid="stFileUploaderDropzoneInstructions"] > div {{
+            font-size: 0.93rem;
+            color: #646464;
+        }}
+        .start-card.compact small {{
+            color: #7c7c7c;
+        }}
+        @media (max-width: 900px) {{
+            .start-shell {{
+                margin-top: 14vh;
+                width: 92vw;
+                min-width: unset;
+            }}
+            .start-title {{
+                font-size: 1.6rem;
+            }}
+            .start-card.compact {{
+                border-radius: 16px;
+                width: 92vw;
+                min-width: unset;
+            }}
         }}
         .batch-row {{
             display: flex;
