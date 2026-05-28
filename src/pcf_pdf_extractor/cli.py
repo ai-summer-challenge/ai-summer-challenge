@@ -51,21 +51,61 @@ def extract(
 ) -> None:
     """Read a supported source file and emit one PCF JSON record per chemical/product."""
 
-    settings = get_settings()
-    pcf_extractor = build_extractor(extractor, settings)
-    records = ExtractPcfFromSource(extractor=pcf_extractor).run(source_path)
-    if not records:
-        raise typer.BadParameter("No chemical/product PCF records were extracted from this source.")
-    if enrich_reference_data:
-        reference_enricher = build_reference_data_enricher(settings)
-        for record in records:
-            reference_enricher.enrich(record)
-            _ensure_enrichment_fields(record)
+    records = _extract_records(
+        source_path,
+        extractor,
+        enrich_reference_data=enrich_reference_data,
+    )
 
     if output is not None:
         written_paths = _write_records(records, output)
         for path in written_paths:
             typer.echo(f"Wrote extracted PCF record to {path}")
+        return
+
+    payload: object
+    if len(records) == 1:
+        payload = _record_payload(records[0])
+    else:
+        payload = [_record_payload(record) for record in records]
+    typer.echo(json.dumps(payload, indent=2, ensure_ascii=False))
+
+
+@app.command("extract-enrich")
+def extract_enrich(
+    source_path: Annotated[
+        Path,
+        typer.Argument(help="Supplier source file containing PCF information."),
+    ],
+    extractor: Annotated[
+        ExtractorKind,
+        typer.Option(
+            "--extractor",
+            "-x",
+            help="Extraction strategy to use.",
+            case_sensitive=False,
+        ),
+    ] = ExtractorKind.LLM,
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            "-o",
+            help=(
+                "Optional JSON file or directory. Multi-chemical sources are written as one "
+                "JSON file per chemical."
+            ),
+        ),
+    ] = None,
+) -> None:
+    """Extract source data and immediately enrich it with BAFU/Eclasses reference data."""
+
+    records = _extract_records(source_path, extractor, enrich_reference_data=True)
+
+    if output is not None:
+        written_paths = _write_records(records, output)
+        for path in written_paths:
+            typer.echo(f"Wrote extracted and enriched PCF record to {path}")
         return
 
     payload: object
@@ -124,6 +164,25 @@ def ship(
     client = CompanyApiClient.from_settings(get_settings())
     response_payload = client.submit_pcf_record(record)
     typer.echo(json.dumps(response_payload, indent=2, ensure_ascii=False))
+
+
+def _extract_records(
+    source_path: Path,
+    extractor: ExtractorKind,
+    *,
+    enrich_reference_data: bool,
+) -> list[PCFRecord]:
+    settings = get_settings()
+    pcf_extractor = build_extractor(extractor, settings)
+    records = ExtractPcfFromSource(extractor=pcf_extractor).run(source_path)
+    if not records:
+        raise typer.BadParameter("No chemical/product PCF records were extracted from this source.")
+    if enrich_reference_data:
+        reference_enricher = build_reference_data_enricher(settings)
+        for record in records:
+            reference_enricher.enrich(record)
+            _ensure_enrichment_fields(record)
+    return records
 
 
 def _read_records(json_path: Path) -> list[PCFRecord]:
@@ -198,11 +257,20 @@ def _ensure_enrichment_fields(record: PCFRecord) -> None:
     if record.is_benchmarch_ok is None:
         record.is_benchmarch_ok = False
     if record.oil_and_gas_check_ok is None:
-        record.oil_and_gas_check_ok = False
+        oil_gas_relevant = record.oil_gas_relevant.result is True
+        has_oil_gas_update = record.minimum_requirements.oil_and_gas_update.result is True
+        has_secondary_databases = record.minimum_requirements.secondary_databases.result is True
+        record.oil_and_gas_check_ok = (
+            True
+            if not oil_gas_relevant
+            else has_oil_gas_update or has_secondary_databases
+        )
 
 
 def _normalize_legacy_record_payload(payload: dict) -> dict:
     normalized = dict(payload)
+    normalized.pop("expected_gwp100_reason", None)
+    normalized.pop("oil_gas_relevant_reason", None)
     minimum_requirements = normalized.get("minimum_requirements")
     if isinstance(minimum_requirements, dict):
         secondary_databases = minimum_requirements.get("secondary_databases")
@@ -254,6 +322,17 @@ def _normalize_legacy_record_payload(payload: dict) -> dict:
     if normalized.get("is_benchmarch_ok") is None:
         normalized["is_benchmarch_ok"] = False
     if normalized.get("oil_and_gas_check_ok") is None:
-        normalized["oil_and_gas_check_ok"] = False
+        oil_gas_relevant = normalized["oil_gas_relevant"]["result"] is True
+        minimum_requirements = normalized.get("minimum_requirements") or {}
+        oil_and_gas_update = minimum_requirements.get("oil_and_gas_update") or {}
+        secondary_databases = minimum_requirements.get("secondary_databases") or {}
+        normalized["oil_and_gas_check_ok"] = (
+            True
+            if not oil_gas_relevant
+            else (
+                oil_and_gas_update.get("result") is True
+                or secondary_databases.get("result") is True
+            )
+        )
 
     return normalized

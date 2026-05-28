@@ -8,11 +8,11 @@ SRC_DIR = ROOT_DIR / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from pcf_pdf_extractor.application import ExtractPcfFromSource
-from pcf_pdf_extractor.cli import _ensure_enrichment_fields, _write_records
-from pcf_pdf_extractor.config import get_settings
-from pcf_pdf_extractor.enrichment import build_reference_data_enricher
-from pcf_pdf_extractor.extraction import ExtractorKind, build_extractor
+from pcf_pdf_extractor.application import ExtractPcfFromSource  # noqa: E402
+from pcf_pdf_extractor.cli import _ensure_enrichment_fields, _write_records  # noqa: E402
+from pcf_pdf_extractor.config import get_settings  # noqa: E402
+from pcf_pdf_extractor.enrichment import build_reference_data_enricher  # noqa: E402
+from pcf_pdf_extractor.extraction import ExtractorKind, build_extractor  # noqa: E402
 
 
 def main() -> None:

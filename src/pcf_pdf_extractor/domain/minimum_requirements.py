@@ -125,38 +125,21 @@ def _accepted_standard_check(check: StandardsRequirementCheck) -> StandardsRequi
 
 
 def _secondary_databases_check(
-    check: SecondaryDatabasesRequirementCheck,
-) -> SecondaryDatabasesRequirementCheck:
-    has_databases = bool(check.result)
-    unapproved_databases = [
-        database for database in check.result if not _is_approved_secondary_database(database)
-    ]
-    fulfilled = not unapproved_databases
-
-    if fulfilled and has_databases:
-        reason = (
-            "Only approved secondary databases were extracted: ecoinvent 3.10 or newer "
-            "and/or Sphera Managed Content 2024 or newer."
-        )
-    elif has_databases:
-        reason = (
-            "At least one secondary emission factor database is not allowed. Only "
-            "ecoinvent 3.10 or newer and Sphera Managed Content 2024 or newer are "
-            "accepted. Found: "
-            f"{_format_databases(unapproved_databases)}."
-        )
-    else:
-        reason = "No secondary emission factor database was extracted, which is acceptable."
-
-    database_evidence = _format_databases(check.result)
-    return SecondaryDatabasesRequirementCheck(
-        fulfilled=fulfilled,
-        result=fulfilled,
+    check: BooleanRequirementCheck,
+) -> BooleanRequirementCheck:
+    compliant = check.result is True
+    return BooleanRequirementCheck(
+        fulfilled=compliant,
+        result=compliant,
         evidence=check.evidence,
         reason=(
-            "Secondary databases are compliant."
-            if fulfilled
-            else "Secondary databases are not compliant."
+            "An accepted secondary database was extracted: ecoinvent 3.10 or newer "
+            "or Sphera Managed Content 2024."
+            if compliant
+            else (
+                "No accepted secondary database was extracted. Accepted secondary databases "
+                "are ecoinvent 3.10 or newer, or Sphera Managed Content 2024."
+            )
         ),
     )
 
@@ -184,17 +167,6 @@ def _has_accepted_standard(standards: list[str]) -> bool:
         or _contains_iso_14040_44_shorthand(" ".join(standards).lower())
     )
     return has_tfs or has_iso_14067 or has_iso_14040_and_14044
-
-
-def _is_approved_secondary_database(database: SecondaryDatabase) -> bool:
-    name = _normalize_text(database.name)
-    is_ecoinvent_310_or_above = "ecoinvent" in name and _version_gte(database.version, 3.10)
-    is_sphera_2024_or_above = (
-        "sphera" in name
-        and ("managed content" in name or "managedcontent" in name)
-        and _year_gte(database.version, 2024)
-    )
-    return is_ecoinvent_310_or_above or is_sphera_2024_or_above
 
 
 def _normalize_text(value: str) -> str:

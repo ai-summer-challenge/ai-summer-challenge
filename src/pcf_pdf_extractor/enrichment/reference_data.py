@@ -294,8 +294,10 @@ class ReferenceDataEnricher:
             if record.oil_gas_relevant is not None
             else False
         )
-        record.oil_and_gas_check_ok = oil_gas_relevant and (
-            has_oil_gas_update or has_secondary_databases
+        record.oil_and_gas_check_ok = (
+            True
+            if not oil_gas_relevant
+            else has_oil_gas_update or has_secondary_databases
         )
 
     def _user_prompt(self, record: PCFRecord, candidates: list[BafuRow]) -> str:

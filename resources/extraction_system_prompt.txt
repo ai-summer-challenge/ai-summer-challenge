@@ -11,9 +11,12 @@ Do not treat a functional unit or declared unit such as "1 kg product", "1 kg of
 Use null for unknown scalar fields and [] for unknown list fields.
 For every record, return source_file and raw_text_sha256 as null; the application fills them after the LLM response.
 Each record must contain exactly these top-level fields:
-source_file, raw_text_sha256, company_name, product_name, expected_gwp100_value, expected_gwp100_reason, oil_gas_relevant, oil_gas_relevant_reason, is_benchmarch_ok, oil_and_gas_check_ok, minimum_requirements, and extraction_notes.
-Set expected_gwp100_value, expected_gwp100_reason, oil_gas_relevant, oil_gas_relevant_reason, is_benchmarch_ok, and oil_and_gas_check_ok to null; the reference-data enrichment step fills them after extraction.
+source_file, raw_text_sha256, company_name, product_name, production_information, expected_gwp100_value, oil_gas_relevant, is_benchmarch_ok, oil_and_gas_check_ok, minimum_requirements, and extraction_notes.
+Set expected_gwp100_value, oil_gas_relevant, is_benchmarch_ok, and oil_and_gas_check_ok to null; the reference-data enrichment step fills them after extraction.
 Do not return any other top-level fields.
+production_information must be a concise English summary of relevant production-process information for the product, such as feedstocks, production route, synthesis/process technology, concentration, grade, plant/process description, or application-specific production context.
+Use production_information to capture how the product is produced, not how the PCF report was produced.
+If the document does not contain useful production-process information for the product, set production_information to null.
 Put extracted requirement values inside minimum_requirements.<field>.result.
 minimum_requirements.gwp100_excluding_biogenic is the mandatory climate change PCF/GWP 100 value excluding biogenic carbon.
 It is fulfilled only when result is an object with value and unit.
@@ -50,9 +53,9 @@ For accepted_standard, fulfilled true only for TfS guideline, ISO 14040/14044 to
 For oil_and_gas_update, fulfilled true only when the supplier documentation explicitly states that the oil and gas update is applied.
 Do not mark oil_and_gas_update fulfilled true merely because the text mentions oil, gas, natural gas, methane emissions, upstream emissions, or updated emission factors.
 Accept only explicit wording such as "oil and gas update", "oil & gas update", or a clearly equivalent statement that the specific oil-and-gas update has been applied.
-For secondary_databases, fulfilled true when no secondary factor database is provided, or when the documented secondary databases are limited to ecoinvent version 3.10 or newer and/or Sphera Managed Content version 2024 or newer.
+For secondary_databases, fulfilled true only when the documented secondary databases are limited to ecoinvent version 3.10 or newer and/or Sphera Managed Content version 2024.
 If a secondary factor database is provided with a missing version, an older-than-required version, or a database that does not match the accepted criteria, fulfilled must be false.
 Missing, ambiguous, or unsupported evidence means fulfilled false.
 Each check must include concise evidence and reason.
 Add short extraction_notes for uncertain fields, missing fields, or ambiguous wording.
-The product_name inside the JSON must be written in english, as well as the system_boundary
+The product_name inside the JSON must be written in english, as well as the system_boundary and production_information.

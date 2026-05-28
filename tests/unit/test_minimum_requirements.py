@@ -125,7 +125,7 @@ def test_assessment_requires_including_biogenic_value_when_absent() -> None:
 
     assert checks.gwp100_excluding_biogenic.fulfilled is True
     assert checks.gwp100_including_biogenic.fulfilled is False
-    assert checks.secondary_databases.fulfilled is True
+    assert checks.secondary_databases.fulfilled is False
 
 
 def test_assessment_rejects_unaccepted_standard_and_missing_database_version() -> None:
@@ -197,7 +197,7 @@ def test_secondary_database_requirement_accepts_sphera_2024_or_above() -> None:
                 value=1.45,
                 unit="kg CO2e/kg product",
             ),
-            secondary_databases=[SecondaryDatabase(name="Sphera Managed Content", version="2025")],
+            secondary_databases=True,
         ),
     )
 
@@ -206,14 +206,14 @@ def test_secondary_database_requirement_accepts_sphera_2024_or_above() -> None:
     assert checks.secondary_databases.fulfilled is True
 
 
-def test_secondary_database_requirement_rejects_sphera_before_2024() -> None:
+def test_secondary_database_requirement_rejects_non_compliant_database() -> None:
     record = PCFRecord(
         minimum_requirements=_requirements(
             gwp100_excluding_biogenic=PcfValueResult(
                 value=1.45,
                 unit="kg CO2e/kg product",
             ),
-            secondary_databases=True,
+            secondary_databases=False,
         ),
     )
 

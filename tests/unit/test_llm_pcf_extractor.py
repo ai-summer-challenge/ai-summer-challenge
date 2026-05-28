@@ -28,6 +28,9 @@ def test_llm_extractor_validates_json_payload() -> None:
                 {
                     "company_name": "Example Chemicals",
                     "product_name": "Solvent X",
+                    "production_information": (
+                        "Solvent X is produced by catalytic hydrogenation of feedstock A."
+                    ),
                     "minimum_requirements": {
                         "gwp100_excluding_biogenic": {
                             "fulfilled": True,
@@ -92,6 +95,9 @@ def test_llm_extractor_validates_json_payload() -> None:
 
     assert len(records) == 1
     assert record.company_name == "Example Chemicals"
+    assert record.production_information == (
+        "Solvent X is produced by catalytic hydrogenation of feedstock A."
+    )
     assert record.minimum_requirements.gwp100_excluding_biogenic.fulfilled is True
     assert record.minimum_requirements.gwp100_excluding_biogenic.result is not None
     assert record.minimum_requirements.gwp100_excluding_biogenic.result.value == 1.45
@@ -175,3 +181,21 @@ def test_llm_extractor_returns_one_record_per_chemical() -> None:
     assert records[0].minimum_requirements.gwp100_excluding_biogenic.result.value == 1.1
     assert records[1].minimum_requirements.gwp100_excluding_biogenic.result is not None
     assert records[1].minimum_requirements.gwp100_excluding_biogenic.result.value == 2.2
+
+
+def test_llm_extractor_ignores_legacy_reason_fields() -> None:
+    client = FakeLlmClient(
+        {
+            "company_name": "Example Chemicals",
+            "product_name": "Solvent X",
+            "expected_gwp100_reason": None,
+            "oil_gas_relevant_reason": None,
+            "gwp100": 1.45,
+            "gwp100_unit": "kg CO2e/kg product",
+        }
+    )
+
+    records = LlmPcfExtractor(client=client).extract("Company: Example Chemicals")
+
+    assert len(records) == 1
+    assert records[0].product_name == "Solvent X"

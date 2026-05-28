@@ -15,7 +15,7 @@ Hard constraints:
 4. Output must match the schema exactly.
 
 Input objects:
-- INPUT_JSON: one extracted record with product_name and context fields.
+- INPUT_JSON: one extracted record with product_name, production_information, and context fields.
 - BAFU_CANDIDATE_ROWS: pre-filtered BAFU options with row number, product, unit, and gwp100.
 - OIL_GAS_RELEVANCE_ENTRIES: Eclasses list entries.
 
@@ -23,6 +23,8 @@ Chemical identity rules:
 - Treat clear synonyms, translations, and formulas as equivalent (German/English/abbreviation).
 - Do not map near-neighbors (different chemicals with similar names).
 - Concentration/grade/variant matter when present (e.g., 50% solution).
+- Use production_information as supporting context when it clarifies production route, feedstock, grade, concentration, or process variant.
+- Do not override a clear chemical-name mismatch only because production_information sounds similar.
 - Prefer the most specific valid candidate.
 
 Region rules:

@@ -61,6 +61,7 @@ def test_reference_data_enricher_adds_expected_gwp_and_oil_gas_flag(
     )
     record = PCFRecord(
         product_name="Natronlauge 50%",
+        production_information="Produced as a 50% aqueous sodium hydroxide solution.",
         minimum_requirements=_minimum_requirements(
             production_location="Europe",
             secondary_databases=True,
@@ -90,7 +91,45 @@ def test_reference_data_enricher_adds_expected_gwp_and_oil_gas_flag(
     assert enriched.oil_and_gas_check_ok is True
     assert client.user_prompt is not None
     assert "BAFU_CANDIDATE_ROWS" in client.user_prompt
+    assert "Produced as a 50% aqueous sodium hydroxide solution." in client.user_prompt
     assert "Sodium hydroxide, 50% in H2O, at plant {RER}" in client.user_prompt
+
+
+def test_oil_and_gas_check_passes_when_product_is_not_oil_gas_relevant(
+    tmp_path: Path,
+) -> None:
+    bafu_path = _write_bafu_workbook(tmp_path)
+    oil_gas_path = tmp_path / "EclasseswithOilGasRelevance.txt"
+    oil_gas_path.write_text("Ammoniak\n", encoding="utf-8")
+    prompt_path = tmp_path / "prompt_mapping.txt"
+    prompt_path.write_text("You are an expert in chemical mapping.", encoding="utf-8")
+    client = FakeMappingClient(
+        {
+            "bafu_row": 3,
+            "oil_gas_relevant": False,
+            "clarification_needed": False,
+            "reason": "",
+        }
+    )
+    record = PCFRecord(
+        product_name="Natronlauge 50%",
+        minimum_requirements=_minimum_requirements(
+            production_location="Europe",
+            secondary_databases=False,
+        ),
+    )
+
+    enriched = ReferenceDataEnricher.from_paths(
+        client=client,
+        bafu_path=bafu_path,
+        oil_gas_path=oil_gas_path,
+        prompt_path=prompt_path,
+        candidate_limit=5,
+    ).enrich(record)
+
+    assert enriched.oil_gas_relevant is not None
+    assert enriched.oil_gas_relevant.result is False
+    assert enriched.oil_and_gas_check_ok is True
 
 
 def _write_bafu_workbook(tmp_path: Path) -> Path:

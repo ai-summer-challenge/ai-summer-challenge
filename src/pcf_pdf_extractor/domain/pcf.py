@@ -93,6 +93,13 @@ class PCFRecord(BaseModel):
 
     company_name: str | None = None
     product_name: str | None = None
+    production_information: str | None = Field(
+        default=None,
+        description=(
+            "Relevant English summary of how the product is produced, when documented. "
+            "Used as context for reference-data matching."
+        ),
+    )
     expected_gwp100_value: PcfValueRequirementCheck | None = Field(
         default=None,
         description="Reference GWP 100 value from the BAFU mapping, when available.",
@@ -108,8 +115,8 @@ class PCFRecord(BaseModel):
     oil_and_gas_check_ok: bool | None = Field(
         default=None,
         description=(
-            "True when oil_gas_relevant is true and either oil_and_gas_update.result is true "
-            "or secondary_databases.result is non-empty."
+            "True when the product is not Oil & Gas relevant, or when it is relevant and "
+            "either oil_and_gas_update.result or secondary_databases.result is true."
         ),
     )
     minimum_requirements: MinimumRequirements

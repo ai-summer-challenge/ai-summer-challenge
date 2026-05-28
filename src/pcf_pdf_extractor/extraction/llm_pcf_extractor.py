@@ -89,6 +89,8 @@ class LlmPcfExtractor:
 
     def _normalize_record_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
         normalized = dict(payload)
+        normalized.pop("expected_gwp100_reason", None)
+        normalized.pop("oil_gas_relevant_reason", None)
         legacy_gwp100 = normalized.pop("gwp100", None)
         legacy_gwp100_biogenic = normalized.pop("gwp100_biogenic", None)
         legacy_gwp100_unit = normalized.pop("gwp100_unit", None)

@@ -107,6 +107,12 @@ To run extraction and then immediately enrich each JSON with the BAFU expected G
 value and Eclasses Oil & Gas relevance:
 
 ```bash
+pcf-extract extract-enrich data/incoming/example.pdf --output data/processed/example.json
+```
+
+The older equivalent command still works:
+
+```bash
 pcf-extract extract data/incoming/example.pdf --enrich-reference-data --output data/processed/example.json
 ```
 
