@@ -8,7 +8,7 @@ from typing import Any, Protocol
 from openpyxl import load_workbook
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from pcf_pdf_extractor.domain import PCFRecord, PcfValueResult
+from pcf_pdf_extractor.domain import BooleanRequirementCheck, PCFRecord, PcfValueRequirementCheck, PcfValueResult
 
 
 class JsonLlmClient(Protocol):
@@ -179,11 +179,17 @@ class ReferenceDataEnricher:
 
     def enrich(self, record: PCFRecord) -> PCFRecord:
         if not record.product_name:
-            record.expected_gwp100_value = None
-            record.expected_gwp100_reason = "No product_name was available for BAFU mapping."
-            record.oil_gas_relevant = False
-            record.oil_gas_relevant_reason = (
-                "No product_name was available, so Eclasses relevance was set to false."
+            record.expected_gwp100_value = PcfValueRequirementCheck(
+                fulfilled=False,
+                reason="No product_name was available for BAFU mapping.",
+                evidence=None,
+                result=None,
+            )
+            record.oil_gas_relevant = BooleanRequirementCheck(
+                fulfilled=False,
+                reason="No product_name was available, so Eclasses relevance was set to false.",
+                evidence=None,
+                result=False,
             )
             record.extraction_notes.append(
                 "Reference data enrichment skipped because product_name is missing."
@@ -203,16 +209,24 @@ class ReferenceDataEnricher:
             response_schema=BafuMappingResponse.model_json_schema(),
         )
         mapping = BafuMappingResponse.model_validate(mapping_payload)
-        record.oil_gas_relevant = mapping.oil_gas_relevant
-        record.oil_gas_relevant_reason = (
-            "Mapped from Eclasses relevance check in prompt_mapping."
-            if mapping.oil_gas_relevant
-            else "Not found in Eclasses relevance list by mapping step."
+        record.oil_gas_relevant = BooleanRequirementCheck(
+            fulfilled=True,
+            reason=(
+                "Mapped from Eclasses relevance check in prompt_mapping."
+                if mapping.oil_gas_relevant
+                else "Not found in Eclasses relevance list by mapping step."
+            ),
+            evidence=None,
+            result=mapping.oil_gas_relevant,
         )
 
         if mapping.clarification_needed:
-            record.expected_gwp100_value = None
-            record.expected_gwp100_reason = f"Clarification needed: {mapping.reason}"
+            record.expected_gwp100_value = PcfValueRequirementCheck(
+                fulfilled=False,
+                reason=f"Clarification needed: {mapping.reason}",
+                evidence=None,
+                result=None,
+            )
             record.extraction_notes.append(
                 f"BAFU mapping requires clarification: {mapping.reason}"
             )
@@ -220,8 +234,12 @@ class ReferenceDataEnricher:
             return record
 
         if mapping.bafu_row is False:
-            record.expected_gwp100_value = None
-            record.expected_gwp100_reason = "No safe BAFU row match was found."
+            record.expected_gwp100_value = PcfValueRequirementCheck(
+                fulfilled=False,
+                reason="No safe BAFU row match was found.",
+                evidence=None,
+                result=None,
+            )
             record.extraction_notes.append("No safe BAFU expected GWP 100 match was found.")
             self._compute_checks(record)
             return record
@@ -229,9 +247,11 @@ class ReferenceDataEnricher:
         bafu_row = self._bafu_reference.row_by_number(mapping.bafu_row)
         candidate_row_numbers = {candidate.row_number for candidate in candidates}
         if bafu_row is None or bafu_row.row_number not in candidate_row_numbers:
-            record.expected_gwp100_value = None
-            record.expected_gwp100_reason = (
-                f"Mapped row {mapping.bafu_row} is not in the candidate set."
+            record.expected_gwp100_value = PcfValueRequirementCheck(
+                fulfilled=False,
+                reason=f"Mapped row {mapping.bafu_row} is not in the candidate set.",
+                evidence=None,
+                result=None,
             )
             record.extraction_notes.append(
                 f"BAFU mapping returned unavailable row {mapping.bafu_row}."
@@ -239,19 +259,25 @@ class ReferenceDataEnricher:
             self._compute_checks(record)
             return record
 
-        record.expected_gwp100_value = PcfValueResult(
-            value=bafu_row.gwp100_value,
-            unit=bafu_row.gwp100_unit,
-        )
-        record.expected_gwp100_reason = (
-            f"Mapped to BAFU row {bafu_row.row_number}: {bafu_row.product}."
+        record.expected_gwp100_value = PcfValueRequirementCheck(
+            fulfilled=True,
+            reason=f"Mapped to BAFU row {bafu_row.row_number}: {bafu_row.product}.",
+            evidence=None,
+            result=PcfValueResult(
+                value=bafu_row.gwp100_value,
+                unit=bafu_row.gwp100_unit,
+            ),
         )
         self._compute_checks(record)
         return record
 
     def _compute_checks(self, record: PCFRecord) -> None:
         actual = record.minimum_requirements.gwp100_excluding_biogenic.result
-        expected = record.expected_gwp100_value
+        expected = (
+            record.expected_gwp100_value.result
+            if record.expected_gwp100_value is not None
+            else None
+        )
         if actual is not None and expected is not None:
             if actual.value == 0:
                 record.is_benchmarch_ok = expected.value == 0
@@ -263,7 +289,12 @@ class ReferenceDataEnricher:
 
         has_oil_gas_update = record.minimum_requirements.oil_and_gas_update.result is True
         has_secondary_databases = bool(record.minimum_requirements.secondary_databases.result)
-        record.oil_and_gas_check_ok = bool(record.oil_gas_relevant) and (
+        oil_gas_relevant = (
+            record.oil_gas_relevant.result is True
+            if record.oil_gas_relevant is not None
+            else False
+        )
+        record.oil_and_gas_check_ok = oil_gas_relevant and (
             has_oil_gas_update or has_secondary_databases
         )
 

@@ -4,8 +4,6 @@ from pcf_pdf_extractor.domain import (
     PCFRecord,
     PcfValueRequirementCheck,
     PcfValueResult,
-    SecondaryDatabase,
-    SecondaryDatabasesRequirementCheck,
     StandardsRequirementCheck,
     TextRequirementCheck,
     YearRequirementCheck,
@@ -22,7 +20,7 @@ def _requirements(
     production_location: str | None = None,
     reference_year: int | None = None,
     impact_assessment_method: str | None = None,
-    secondary_databases: list[SecondaryDatabase] | None = None,
+    secondary_databases: bool | None = None,
     oil_and_gas_update: bool | None = None,
 ) -> MinimumRequirements:
     return MinimumRequirements(
@@ -68,9 +66,9 @@ def _requirements(
             evidence=None,
             reason="",
         ),
-        secondary_databases=SecondaryDatabasesRequirementCheck(
-            fulfilled=False,
-            result=secondary_databases or [],
+        secondary_databases=BooleanRequirementCheck(
+            fulfilled=secondary_databases is True,
+            result=secondary_databases,
             evidence=None,
             reason="",
         ),
@@ -103,7 +101,7 @@ def test_assessment_fulfills_all_requirements_with_two_pcf_values() -> None:
             production_location="France",
             reference_year=2024,
             impact_assessment_method="IPCC AR6",
-            secondary_databases=[SecondaryDatabase(name="ecoinvent", version="3.10")],
+            secondary_databases=True,
             oil_and_gas_update=True,
         ),
     )
@@ -137,7 +135,7 @@ def test_assessment_rejects_unaccepted_standard_and_missing_database_version() -
                 unit="kg CO2e/kg product",
             ),
             standards=["GHG Protocol"],
-            secondary_databases=[SecondaryDatabase(name="ecoinvent")],
+            secondary_databases=False,
         ),
     )
 
@@ -154,9 +152,7 @@ def test_assessment_accepts_sphera_managed_content_2024() -> None:
                 value=1.45,
                 unit="kg CO2e/kg product",
             ),
-            secondary_databases=[
-                SecondaryDatabase(name="Sphera Managed Content", version="2024")
-            ],
+            secondary_databases=True,
         ),
     )
 
@@ -165,30 +161,30 @@ def test_assessment_accepts_sphera_managed_content_2024() -> None:
     assert checks.secondary_databases.fulfilled is True
 
 
-def test_secondary_database_requirement_accepts_ecoinvent_310_or_above() -> None:
+def test_secondary_database_requirement_false_when_not_compliant() -> None:
     record = PCFRecord(
         minimum_requirements=_requirements(
             gwp100_excluding_biogenic=PcfValueResult(
                 value=1.45,
                 unit="kg CO2e/kg product",
             ),
-            secondary_databases=[SecondaryDatabase(name="ecoinvent", version="3.11")],
+            secondary_databases=False,
         ),
     )
 
     checks = _assessed(record)
 
-    assert checks.secondary_databases.fulfilled is True
+    assert checks.secondary_databases.fulfilled is False
 
 
-def test_secondary_database_requirement_accepts_sphera_2024_or_older() -> None:
+def test_secondary_database_requirement_true_when_compliant() -> None:
     record = PCFRecord(
         minimum_requirements=_requirements(
             gwp100_excluding_biogenic=PcfValueResult(
                 value=1.45,
                 unit="kg CO2e/kg product",
             ),
-            secondary_databases=[SecondaryDatabase(name="Sphera Managed Content", version="2023")],
+            secondary_databases=True,
         ),
     )
 

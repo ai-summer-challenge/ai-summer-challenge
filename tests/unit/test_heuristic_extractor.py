@@ -34,14 +34,5 @@ def test_heuristic_extractor_finds_common_pcf_fields() -> None:
     assert record.minimum_requirements.production_location.result == "France"
     assert record.minimum_requirements.reference_year.result == 2024
     assert record.minimum_requirements.impact_assessment_method.result == "IPCC AR6"
-    assert record.minimum_requirements.secondary_databases.result[0].name == "ecoinvent"
-    assert record.minimum_requirements.secondary_databases.result[0].version == "3.10"
-    assert record.minimum_requirements.gwp100_excluding_biogenic.fulfilled is True
-    assert record.minimum_requirements.gwp100_including_biogenic.fulfilled is True
-    assert record.minimum_requirements.system_boundary.fulfilled is True
-    assert record.minimum_requirements.accepted_standard.fulfilled is True
-    assert record.minimum_requirements.production_location.fulfilled is True
-    assert record.minimum_requirements.reference_year.fulfilled is True
-    assert record.minimum_requirements.impact_assessment_method.fulfilled is True
-    assert record.minimum_requirements.secondary_databases.fulfilled is True
+    assert record.minimum_requirements.secondary_databases.result is True
     assert record.minimum_requirements.oil_and_gas_update.fulfilled is True

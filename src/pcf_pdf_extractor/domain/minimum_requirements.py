@@ -6,8 +6,6 @@ from pcf_pdf_extractor.domain.pcf import (
     PCFRecord,
     PcfValueRequirementCheck,
     PcfValueResult,
-    SecondaryDatabase,
-    SecondaryDatabasesRequirementCheck,
     StandardsRequirementCheck,
     TextRequirementCheck,
     YearRequirementCheck,
@@ -127,37 +125,18 @@ def _accepted_standard_check(check: StandardsRequirementCheck) -> StandardsRequi
 
 
 def _secondary_databases_check(
-    check: SecondaryDatabasesRequirementCheck,
-) -> SecondaryDatabasesRequirementCheck:
-    has_databases = bool(check.result)
-    unapproved_databases = [
-        database for database in check.result if not _is_approved_secondary_database(database)
-    ]
-    fulfilled = has_databases and not unapproved_databases
-
-    if fulfilled:
-        reason = (
-            "Only approved secondary databases were extracted: ecoinvent 3.10 or "
-            "Sphera Managed Content 2024."
-        )
-    elif has_databases:
-        reason = (
-            "At least one secondary emission factor database is not allowed. Only "
-            "ecoinvent 3.10 or Sphera Managed Content 2024 are accepted. Found: "
-            f"{_format_databases(unapproved_databases)}."
-        )
-    else:
-        reason = (
-            "No approved secondary emission factor database was extracted. Only ecoinvent "
-            "3.10 or Sphera Managed Content 2024 are accepted."
-        )
-
-    database_evidence = _format_databases(check.result)
-    return SecondaryDatabasesRequirementCheck(
+    check: BooleanRequirementCheck,
+) -> BooleanRequirementCheck:
+    fulfilled = check.result is True
+    return BooleanRequirementCheck(
         fulfilled=fulfilled,
-        result=check.result,
-        evidence=check.evidence or database_evidence or None,
-        reason=reason,
+        result=fulfilled,
+        evidence=check.evidence,
+        reason=(
+            "Secondary databases are compliant."
+            if fulfilled
+            else "Secondary databases are not compliant."
+        ),
     )
 
 
@@ -186,17 +165,6 @@ def _has_accepted_standard(standards: list[str]) -> bool:
     return has_tfs or has_iso_14067 or has_iso_14040_and_14044
 
 
-def _is_approved_secondary_database(database: SecondaryDatabase) -> bool:
-    name = _normalize_text(database.name)
-    is_ecoinvent_310_or_above = "ecoinvent" in name and _version_gte(database.version, 3.10)
-    is_sphera_2024_or_older = (
-        "sphera" in name
-        and ("managed content" in name or "managedcontent" in name)
-        and _year_lte(database.version, 2024)
-    )
-    return is_ecoinvent_310_or_above or is_sphera_2024_or_older
-
-
 def _normalize_text(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
 
@@ -211,35 +179,7 @@ def _pcf_value_evidence(result: PcfValueResult | None) -> str | None:
     return f"{result.value} {result.unit}"
 
 
-def _format_databases(databases: list[SecondaryDatabase]) -> str:
-    return ", ".join(f"{database.name} {database.version}".strip() for database in databases)
-
-
 def _format_optional(label: str, value: object) -> str | None:
     if value is None or value == "":
         return None
     return f"{label}: {value}"
-
-
-def _version_gte(version: str | None, threshold: float) -> bool:
-    if not version:
-        return False
-    match = re.search(r"(\d+(?:[.,]\d+)?)", version)
-    if not match:
-        return False
-    try:
-        return float(match.group(1).replace(",", ".")) >= threshold
-    except ValueError:
-        return False
-
-
-def _year_lte(version: str | None, threshold: int) -> bool:
-    if not version:
-        return False
-    match = re.search(r"\b(19\d{2}|20\d{2})\b", version)
-    if not match:
-        return False
-    try:
-        return int(match.group(1)) <= threshold
-    except ValueError:
-        return False

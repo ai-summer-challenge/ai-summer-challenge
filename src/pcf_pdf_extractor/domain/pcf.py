@@ -63,10 +63,6 @@ class StandardsRequirementCheck(BaseRequirementCheck):
     result: list[str] = Field(default_factory=list)
 
 
-class SecondaryDatabasesRequirementCheck(BaseRequirementCheck):
-    result: list[SecondaryDatabase] = Field(default_factory=list)
-
-
 class MinimumRequirements(BaseModel):
     """Named checklist of minimum supplier-documentation requirements."""
 
@@ -83,7 +79,7 @@ class MinimumRequirements(BaseModel):
     production_location: TextRequirementCheck
     reference_year: YearRequirementCheck
     impact_assessment_method: TextRequirementCheck
-    secondary_databases: SecondaryDatabasesRequirementCheck
+    secondary_databases: BooleanRequirementCheck
     oil_and_gas_update: BooleanRequirementCheck
 
 
@@ -97,21 +93,13 @@ class PCFRecord(BaseModel):
 
     company_name: str | None = None
     product_name: str | None = None
-    expected_gwp100_value: PcfValueResult | None = Field(
+    expected_gwp100_value: PcfValueRequirementCheck | None = Field(
         default=None,
         description="Reference GWP 100 value from the BAFU mapping, when available.",
     )
-    expected_gwp100_reason: str | None = Field(
-        default=None,
-        description="Reason explaining why expected_gwp100_value was filled or left null.",
-    )
-    oil_gas_relevant: bool | None = Field(
+    oil_gas_relevant: BooleanRequirementCheck | None = Field(
         default=None,
         description="Whether the product is relevant according to the Eclasses Oil & Gas list.",
-    )
-    oil_gas_relevant_reason: str | None = Field(
-        default=None,
-        description="Reason explaining how oil_gas_relevant was determined.",
     )
     is_benchmarch_ok: bool | None = Field(
         default=None,

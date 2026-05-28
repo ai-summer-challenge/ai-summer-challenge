@@ -7,7 +7,6 @@ from pcf_pdf_extractor.domain import (
     PcfValueRequirementCheck,
     PcfValueResult,
     SecondaryDatabase,
-    SecondaryDatabasesRequirementCheck,
     StandardsRequirementCheck,
     TextRequirementCheck,
     YearRequirementCheck,
@@ -131,10 +130,10 @@ class HeuristicPcfExtractor:
                     evidence=None,
                     reason="",
                 ),
-                secondary_databases=SecondaryDatabasesRequirementCheck(
+                secondary_databases=BooleanRequirementCheck(
                     fulfilled=False,
-                    result=secondary_databases,
-                    evidence=None,
+                    result=self._has_approved_secondary_database(secondary_databases),
+                    evidence=self._format_databases(secondary_databases) or None,
                     reason="",
                 ),
                 oil_and_gas_update=BooleanRequirementCheck(
@@ -241,6 +240,35 @@ class HeuristicPcfExtractor:
                 canonical_name = self._canonical_database_name(line, database)
                 found[canonical_name.lower()] = SecondaryDatabase(name=canonical_name, version=version)
         return list(found.values())
+
+    def _has_approved_secondary_database(self, databases: list[SecondaryDatabase]) -> bool:
+        for database in databases:
+            name = database.name.lower()
+            version = database.version or ""
+            if "ecoinvent" in name and self._version_gte(version, 3.10):
+                return True
+            if (
+                "sphera" in name
+                and "managed content" in name
+                and self._year_lte(version, 2024)
+            ):
+                return True
+        return False
+
+    def _format_databases(self, databases: list[SecondaryDatabase]) -> str:
+        return ", ".join(f"{database.name} {database.version}".strip() for database in databases)
+
+    def _version_gte(self, version: str, threshold: float) -> bool:
+        match = re.search(r"(\d+(?:\.[0-9]+)?)", version)
+        if not match:
+            return False
+        return float(match.group(1)) >= threshold
+
+    def _year_lte(self, value: str, threshold: int) -> bool:
+        match = re.search(r"\b(19\d{2}|20\d{2})\b", value)
+        if not match:
+            return False
+        return int(match.group(1)) <= threshold
 
     def _find_version_near_database(self, line: str, database: str) -> str | None:
         pattern = re.compile(

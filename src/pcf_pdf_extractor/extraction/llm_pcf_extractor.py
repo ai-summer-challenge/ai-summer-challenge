@@ -100,9 +100,7 @@ class LlmPcfExtractor:
 
         for field_name in [
             "expected_gwp100_value",
-            "expected_gwp100_reason",
             "oil_gas_relevant",
-            "oil_gas_relevant_reason",
             "is_benchmarch_ok",
             "oil_and_gas_check_ok",
         ]:
@@ -202,16 +200,24 @@ class LlmPcfExtractor:
             },
         )
 
-        for field_name in ["accepted_standard", "secondary_databases"]:
-            minimum_requirements.setdefault(
-                field_name,
-                {
-                    "fulfilled": False,
-                    "result": [],
-                    "evidence": None,
-                    "reason": "No value was extracted.",
-                },
-            )
+        minimum_requirements.setdefault(
+            "accepted_standard",
+            {
+                "fulfilled": False,
+                "result": [],
+                "evidence": None,
+                "reason": "No value was extracted.",
+            },
+        )
+        minimum_requirements.setdefault(
+            "secondary_databases",
+            {
+                "fulfilled": False,
+                "result": False,
+                "evidence": None,
+                "reason": "No value was extracted.",
+            },
+        )
 
     def _system_prompt(self) -> str:
         return self._system_prompt_template

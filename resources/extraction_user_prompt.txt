@@ -5,14 +5,14 @@ source_file, raw_text_sha256, company_name, product_name, expected_gwp100_value,
 Set expected_gwp100_value, expected_gwp100_reason, oil_gas_relevant, oil_gas_relevant_reason, is_benchmarch_ok, and oil_and_gas_check_ok to null.
 
 Minimum requirement checklist to assess:
-1. gwp100_excluding_biogenic: mandatory climate change / GWP 100 PCF value excluding biogenic carbon. If fulfilled, result must be {"value": number, "unit": string}. If the value or unit is absent, fulfilled must be false and result must be null; do not invent it.
-2. gwp100_including_biogenic: GWP 100 PCF value including biogenic carbon. If present, result must be {"value": number, "unit": string}; if absent, fulfilled must be false and result must be null.
+1. gwp100_excluding_biogenic: mandatory climate change / GWP 100 PCF value excluding biogenic carbon. If fulfilled, result must be {{"value": number, "unit": string}}. If the value or unit is absent, fulfilled must be false and result must be null; do not invent it.
+2. gwp100_including_biogenic: GWP 100 PCF value including biogenic carbon. If present, result must be {{"value": number, "unit": string}}; if absent, fulfilled must be false and result must be null.
 3. system_boundary: the PCF calculation system boundary must be documented, for example cradle-to-gate.
 4. accepted_standard: only TfS guideline, ISO 14040/14044 together, or ISO 14067 are accepted.
 5. production_location: country or region of production must be documented. Use the production/process location, not the report issuer's address or HQ.
 6. reference_year: reference year of production data/data collection must be documented. Do not use the report issue/publication year unless explicitly stated as the data reference year.
 7. impact_assessment_method: PCF impact assessment method must be documented, for example IPCC AR6, CML2001, ISO14067, or another named method.
-8. secondary_databases: secondary emission factor databases must be documented and must be limited to ecoinvent 3.10 and/or Sphera Managed Content 2024. Any other database or version fails this requirement.
+8. secondary_databases: secondary emission factor databases must be documented and must be limited to ecoinvent 3.10 and/or Sphera Managed Content 2024. Any other database or version fails this requirement. result must be boolean (true/false), not a list.
 
 For every checklist item, add one named minimum_requirements field with fulfilled true or false.
 When evidence is missing or ambiguous, fulfilled must be false.
